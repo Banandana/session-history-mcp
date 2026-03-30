@@ -1,0 +1,110 @@
+import { container } from 'tsyringe'
+import type { McpServer } from '@modelcontextprotocol/sdk/server/mcp.js'
+import { z } from 'zod'
+import { TOKENS } from '../container/tokens'
+import type { FreshnessGuard } from '../services/freshness-guard'
+import type { ProjectResolver } from '../services/project-resolver'
+import type { PaginationManager } from '../services/pagination-manager'
+import type { ResponseFormatter } from '../services/response-formatter'
+import type { DatabaseConnection } from '../infrastructure/database'
+
+export function registerGetChanges(server: McpServer): void {
+  server.tool(
+    'get_changes',
+    'Get file operations tracked across sessions. Filter by session, file path, operation type, or project.',
+    {
+      sessionId: z.string().optional().describe('Filter by session ID'),
+      filePath: z.string().optional().describe('Filter by file path (exact match)'),
+      operation: z.string().optional().describe('Filter by operation: read, write, edit, create'),
+      project: z.string().optional().describe('Filter by project slug'),
+      path: z.string().optional().describe('Resolve project from filesystem path'),
+      cursor: z.string().optional().describe('Pagination cursor'),
+      limit: z.number().optional().describe('Maximum results to return'),
+    },
+    async (params) => {
+      const freshnessGuard = container.resolve<FreshnessGuard>(TOKENS.FreshnessGuard)
+      const projectResolver = container.resolve<ProjectResolver>(TOKENS.ProjectResolver)
+      const pagination = container.resolve<PaginationManager>(TOKENS.PaginationManager)
+      const formatter = container.resolve<ResponseFormatter>(TOKENS.ResponseFormatter)
+      const dbConn = container.resolve<DatabaseConnection>(TOKENS.Database)
+      const db = dbConn.get()
+
+      const freshness = await freshnessGuard.ensureFresh()
+
+      const projectSlug = await projectResolver.resolveProjectFilter({
+        project: params.project,
+        path: params.path,
+      })
+
+      const conditions: string[] = []
+      const sqlParams: unknown[] = []
+
+      if (params.sessionId) {
+        conditions.push('fc.session_id = ?')
+        sqlParams.push(params.sessionId)
+      }
+
+      if (params.filePath) {
+        conditions.push('fc.file_path = ?')
+        sqlParams.push(params.filePath)
+      }
+
+      if (params.operation) {
+        conditions.push('fc.operation = ?')
+        sqlParams.push(params.operation)
+      }
+
+      if (projectSlug) {
+        conditions.push('s.project_slug = ?')
+        sqlParams.push(projectSlug)
+      }
+
+      const whereClause = conditions.length > 0
+        ? `WHERE ${conditions.join(' AND ')}`
+        : ''
+
+      const needsJoin = !!projectSlug
+      const joinClause = needsJoin
+        ? 'JOIN sessions s ON fc.session_id = s.id'
+        : ''
+
+      const sql = `
+        SELECT fc.session_id, fc.file_path, fc.operation, fc.timestamp
+        FROM file_changes fc
+        ${joinClause}
+        ${whereClause}
+        ORDER BY fc.timestamp DESC
+      `
+
+      const rows = db.prepare(sql).all(...sqlParams) as Array<{
+        session_id: string
+        file_path: string
+        operation: string
+        timestamp: string | null
+      }>
+
+      const changes = rows.map(row => ({
+        sessionId: row.session_id,
+        filePath: row.file_path,
+        operation: row.operation,
+        timestamp: row.timestamp,
+      }))
+
+      const page = pagination.paginate(changes, {
+        cursor: params.cursor,
+        limit: params.limit,
+      })
+
+      const meta = formatter.formatMeta(freshness)
+      const paginationResult = page.hasMore
+        ? { cursor: page.cursor!, hasMore: true, totalEstimate: page.totalEstimate }
+        : { cursor: '', hasMore: false, totalEstimate: page.totalEstimate }
+
+      const response = formatter.format(page.items, meta, paginationResult)
+
+      return {
+        content: [{ type: 'text' as const, text: JSON.stringify(response, null, 2) }],
+      }
+    }
+  )
+}

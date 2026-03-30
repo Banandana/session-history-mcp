@@ -1,0 +1,21 @@
+{
+  "version": 1,
+  "entries": [
+    {
+      "sessionId": "aaaaaaaa-1111-2222-3333-444444444444",
+      "firstPrompt": "Build the auth module",
+      "created": "2026-03-28T10:00:00Z",
+      "modified": "2026-03-28T12:00:00Z",
+      "fileMtime": 1774900800000,
+      "gitBranch": "feat/auth"
+    },
+    {
+      "sessionId": "cccccccc-1111-2222-3333-444444444444",
+      "firstPrompt": "Refactor the database layer",
+      "created": "2026-03-28T11:00:00Z",
+      "modified": "2026-03-28T12:00:00Z",
+      "fileMtime": 1774904400000,
+      "gitBranch": "feat/db"
+    }
+  ]
+}

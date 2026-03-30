@@ -1,0 +1,176 @@
+import { join } from 'node:path'
+import type {
+  SessionAdapter,
+  IndexState,
+  FreshnessResult,
+  ProjectMeta,
+  SessionMeta,
+  NormalizedMessage,
+  FileChange,
+  SubagentMeta,
+  MemoryEntry,
+} from '../../types'
+import { fileExists, fileSize, listFiles } from '../../infrastructure/file-system'
+import { SessionDiscovery } from './session-discovery'
+import { ConversationParser } from './conversation-parser'
+import { SubagentParser } from './subagent-parser'
+import { FileChangeExtractor } from './file-change-extractor'
+import { MemoryReader } from './memory-reader'
+import { ConfigReader } from './config-reader'
+import { ToolResultResolver } from './tool-result-resolver'
+
+export { SessionDiscovery } from './session-discovery'
+export { ConversationParser } from './conversation-parser'
+export { SubagentParser } from './subagent-parser'
+export { FileChangeExtractor } from './file-change-extractor'
+export { MemoryReader } from './memory-reader'
+export { ConfigReader } from './config-reader'
+export { ToolResultResolver } from './tool-result-resolver'
+
+const UUID_JSONL = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}\.jsonl$/
+
+export class ClaudeCodeAdapter implements SessionAdapter {
+  readonly source = 'claude-code'
+
+  private readonly discovery: SessionDiscovery
+  private readonly conversationParser: ConversationParser
+  private readonly subagentParser: SubagentParser
+  private readonly fileChangeExtractor: FileChangeExtractor
+  private readonly memoryReader: MemoryReader
+  readonly configReader: ConfigReader
+  readonly toolResultResolver: ToolResultResolver
+
+  constructor(private readonly claudeDir: string) {
+    this.discovery = new SessionDiscovery(claudeDir)
+    this.conversationParser = new ConversationParser()
+    this.subagentParser = new SubagentParser(claudeDir)
+    this.fileChangeExtractor = new FileChangeExtractor()
+    this.memoryReader = new MemoryReader(claudeDir)
+    this.configReader = new ConfigReader(claudeDir)
+    this.toolResultResolver = new ToolResultResolver(claudeDir)
+  }
+
+  async *discoverProjects(): AsyncIterable<ProjectMeta> {
+    await this.discovery.buildProjectCache()
+    yield* this.discovery.discoverProjects()
+  }
+
+  async *discoverSessions(project?: string): AsyncIterable<SessionMeta> {
+    yield* this.discovery.discoverSessions(project)
+  }
+
+  async *getMessages(sessionId: string): AsyncIterable<NormalizedMessage> {
+    const sessionPath = await this.findSessionPath(sessionId)
+    if (!sessionPath) return
+    yield* this.conversationParser.parseSession(sessionPath)
+  }
+
+  async *getFileChanges(sessionId: string): AsyncIterable<FileChange> {
+    const sessionPath = await this.findSessionPath(sessionId)
+    if (!sessionPath) return
+    yield* this.fileChangeExtractor.extractChanges(sessionPath)
+  }
+
+  async *getSubagents(sessionId: string): AsyncIterable<SubagentMeta> {
+    const projectSlug = await this.findProjectSlugForSession(sessionId)
+    if (!projectSlug) return
+    yield* this.subagentParser.getSubagents(projectSlug, sessionId)
+  }
+
+  async *getMemory(project?: string): AsyncIterable<MemoryEntry> {
+    yield* this.memoryReader.readMemory(project)
+  }
+
+  resolveProject(path: string): ProjectMeta | undefined {
+    return this.discovery.resolveProject(path)
+  }
+
+  async checkFreshness(known: IndexState): Promise<FreshnessResult> {
+    const newSessions: string[] = []
+    const changedSessions: string[] = []
+    const removedSessions: string[] = []
+    const seenIds = new Set<string>()
+
+    const projectsDir = join(this.claudeDir, 'projects')
+    if (!(await fileExists(projectsDir))) {
+      // All known sessions are removed
+      const allKnown = Array.from(known.sessionOffsets.keys())
+      return {
+        isStale: allKnown.length > 0,
+        newSessions: [],
+        changedSessions: [],
+        removedSessions: allKnown,
+      }
+    }
+
+    // Walk all project directories, find all session JSONL files
+    for await (const session of this.discovery.discoverSessions()) {
+      const sessionId = session.id
+      seenIds.add(sessionId)
+
+      const sessionPath = join(projectsDir, session.projectSlug, `${sessionId}.jsonl`)
+      if (!(await fileExists(sessionPath))) continue
+
+      const currentSize = await fileSize(sessionPath)
+      const knownOffset = known.sessionOffsets.get(sessionId)
+
+      if (knownOffset === undefined) {
+        newSessions.push(sessionId)
+      } else if (currentSize > knownOffset) {
+        changedSessions.push(sessionId)
+      }
+    }
+
+    // Find removed sessions
+    for (const knownId of known.sessionOffsets.keys()) {
+      if (!seenIds.has(knownId)) {
+        removedSessions.push(knownId)
+      }
+    }
+
+    return {
+      isStale: newSessions.length > 0 || changedSessions.length > 0 || removedSessions.length > 0,
+      newSessions,
+      changedSessions,
+      removedSessions,
+    }
+  }
+
+  /**
+   * Finds the JSONL file path for a given sessionId by searching all project directories.
+   */
+  private async findSessionPath(sessionId: string): Promise<string | undefined> {
+    const projectsDir = join(this.claudeDir, 'projects')
+    if (!(await fileExists(projectsDir))) return undefined
+
+    const { listDirectories } = await import('../../infrastructure/file-system')
+    const slugs = await listDirectories(projectsDir)
+
+    for (const slug of slugs) {
+      const candidate = join(projectsDir, slug, `${sessionId}.jsonl`)
+      if (await fileExists(candidate)) {
+        return candidate
+      }
+    }
+    return undefined
+  }
+
+  /**
+   * Finds the project slug that contains a given sessionId.
+   */
+  private async findProjectSlugForSession(sessionId: string): Promise<string | undefined> {
+    const projectsDir = join(this.claudeDir, 'projects')
+    if (!(await fileExists(projectsDir))) return undefined
+
+    const { listDirectories } = await import('../../infrastructure/file-system')
+    const slugs = await listDirectories(projectsDir)
+
+    for (const slug of slugs) {
+      const candidate = join(projectsDir, slug, `${sessionId}.jsonl`)
+      if (await fileExists(candidate)) {
+        return slug
+      }
+    }
+    return undefined
+  }
+}
