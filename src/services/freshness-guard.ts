@@ -137,12 +137,12 @@ export class FreshnessGuard {
     `)
 
     const insertMessage = this.db.prepare(`
-      INSERT OR REPLACE INTO messages (id, session_id, role, type, timestamp, model, token_count, has_tool_use, tool_names, is_error, is_correction, content_preview, cache_creation_tokens, cache_read_tokens, has_thinking)
-      VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+      INSERT OR REPLACE INTO messages (id, session_id, role, type, timestamp, model, token_count, has_tool_use, tool_names, is_error, is_correction, content_preview, cache_creation_tokens, cache_read_tokens, has_thinking, search_text)
+      VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
     `)
 
     const insertFts = this.db.prepare(`
-      INSERT INTO messages_fts (rowid, content_preview) VALUES (?, ?)
+      INSERT INTO messages_fts (rowid, search_text) VALUES (?, ?)
     `)
 
     for (const sessionId of sessionIds) {
@@ -172,6 +172,7 @@ export class FreshnessGuard {
 
       for (const msg of messages) {
         const contentPreview = this.extractContentPreview(msg)
+        const searchText = this.extractSearchText(msg)
         const tokenCount = msg.tokenUsage
           ? msg.tokenUsage.input_tokens + msg.tokenUsage.output_tokens
           : 0
@@ -194,11 +195,12 @@ export class FreshnessGuard {
           msg.tokenUsage?.cache_creation_input_tokens ?? 0,
           msg.tokenUsage?.cache_read_input_tokens ?? 0,
           msg.hasThinking ? 1 : 0,
+          searchText,
         )
 
-        // Insert into FTS using the rowid returned by the INSERT
-        if (contentPreview && result.lastInsertRowid) {
-          insertFts.run(result.lastInsertRowid, contentPreview)
+        // Insert full search text into FTS
+        if (searchText && result.lastInsertRowid) {
+          insertFts.run(result.lastInsertRowid, searchText)
         }
       }
 
@@ -255,12 +257,12 @@ export class FreshnessGuard {
 
   private async syncChangedSessions(sessionIds: readonly string[]): Promise<void> {
     const insertMessage = this.db.prepare(`
-      INSERT OR REPLACE INTO messages (id, session_id, role, type, timestamp, model, token_count, has_tool_use, tool_names, is_error, is_correction, content_preview, cache_creation_tokens, cache_read_tokens, has_thinking)
-      VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+      INSERT OR REPLACE INTO messages (id, session_id, role, type, timestamp, model, token_count, has_tool_use, tool_names, is_error, is_correction, content_preview, cache_creation_tokens, cache_read_tokens, has_thinking, search_text)
+      VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
     `)
 
     const insertFts = this.db.prepare(`
-      INSERT INTO messages_fts (rowid, content_preview) VALUES (?, ?)
+      INSERT INTO messages_fts (rowid, search_text) VALUES (?, ?)
     `)
 
     for (const sessionId of sessionIds) {
@@ -271,6 +273,7 @@ export class FreshnessGuard {
 
       for (const msg of messages) {
         const contentPreview = this.extractContentPreview(msg)
+        const searchText = this.extractSearchText(msg)
         const tokenCount = msg.tokenUsage
           ? msg.tokenUsage.input_tokens + msg.tokenUsage.output_tokens
           : 0
@@ -293,12 +296,13 @@ export class FreshnessGuard {
           msg.tokenUsage?.cache_creation_input_tokens ?? 0,
           msg.tokenUsage?.cache_read_input_tokens ?? 0,
           msg.hasThinking ? 1 : 0,
+          searchText,
         )
 
-        if (contentPreview) {
+        if (searchText) {
           const row = this.db.prepare('SELECT rowid FROM messages WHERE id = ?').get(msg.id) as { rowid: number } | undefined
           if (row) {
-            this.db.prepare('INSERT OR REPLACE INTO messages_fts (rowid, content_preview) VALUES (?, ?)').run(row.rowid, contentPreview)
+            this.db.prepare('INSERT OR REPLACE INTO messages_fts (rowid, search_text) VALUES (?, ?)').run(row.rowid, searchText)
           }
         }
       }
@@ -576,44 +580,55 @@ export class FreshnessGuard {
     }
   }
 
+  /** Short display preview — used in search results and topic generation. */
   private extractContentPreview(msg: NormalizedMessage): string {
-    const parts: string[] = []
-    let budget = 500 // Increased from 200 to capture more searchable content
-
     for (const block of msg.contentBlocks) {
-      if (budget <= 0) break
-
       if (block.type === 'text' && block.text) {
-        const chunk = block.text.slice(0, budget)
-        parts.push(chunk)
-        budget -= chunk.length
-      } else if (block.type === 'tool_use' && block.name) {
-        // Include tool name and key input params for searchability
-        const toolInfo = block.input && typeof block.input === 'object'
-          ? `[${block.name}: ${this.extractToolInputSummary(block.input, 100)}]`
-          : `[${block.name}]`
-        parts.push(toolInfo)
-        budget -= toolInfo.length
-      } else if (block.type === 'tool_result' && block.content) {
-        // Include error content from tool results for searchability
-        const content = typeof block.content === 'string' ? block.content : JSON.stringify(block.content)
-        if (content.length > 0) {
-          const chunk = content.slice(0, Math.min(budget, 150))
-          parts.push(chunk)
-          budget -= chunk.length
-        }
+        return block.text.slice(0, 500)
       }
     }
-    return parts.join(' ').slice(0, 500)
+    // Fallback: show tool name if no text
+    for (const block of msg.contentBlocks) {
+      if (block.type === 'tool_use' && block.name) {
+        return `[${block.name}]`
+      }
+    }
+    return ''
   }
 
-  private extractToolInputSummary(input: unknown, maxLen: number): string {
-    if (!input || typeof input !== 'object') return ''
-    const obj = input as Record<string, unknown>
-    // Extract key searchable fields from common tools
-    const interesting = obj.file_path ?? obj.command ?? obj.pattern ?? obj.query ?? obj.prompt
-    if (typeof interesting === 'string') return interesting.slice(0, maxLen)
-    return JSON.stringify(obj).slice(0, maxLen)
+  /**
+   * Full searchable text — all text blocks, tool names with inputs,
+   * tool results with generous limits. This is what FTS indexes.
+   */
+  private extractSearchText(msg: NormalizedMessage): string {
+    const parts: string[] = []
+
+    for (const block of msg.contentBlocks) {
+      if (block.type === 'text' && block.text) {
+        // Full text blocks, no truncation
+        parts.push(block.text)
+      } else if (block.type === 'tool_use' && block.name) {
+        // Tool name + full input params (capped at 2K per tool call)
+        if (block.input && typeof block.input === 'object') {
+          const inputStr = JSON.stringify(block.input)
+          parts.push(`${block.name}: ${inputStr.slice(0, 2000)}`)
+        } else {
+          parts.push(block.name)
+        }
+      } else if (block.type === 'tool_result' && block.content) {
+        // Tool results — generous limit (5K per result) to catch error messages,
+        // file contents, command output. Most search-relevant content lives here.
+        const content = typeof block.content === 'string'
+          ? block.content
+          : JSON.stringify(block.content)
+        if (content.length > 0) {
+          parts.push(content.slice(0, 5000))
+        }
+      }
+      // Skip thinking blocks — not useful for search
+    }
+
+    return parts.join('\n')
   }
 
   private async updateFileOffsets(sessionIds: readonly string[]): Promise<void> {

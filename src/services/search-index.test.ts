@@ -35,7 +35,7 @@ describe('SearchIndex', () => {
       INSERT INTO messages (id, session_id, role, type, timestamp, model, content_preview)
       VALUES (?, ?, ?, ?, ?, ?, ?)
     `)
-    const insertFts = db.prepare(`INSERT INTO messages_fts (rowid, content_preview) VALUES (?, ?)`)
+    const insertFts = db.prepare(`INSERT INTO messages_fts (rowid, search_text) VALUES (?, ?)`)
 
     insertMsg.run('msg-1', 'session-1', 'user', 'user', '2026-03-28T10:00:01Z', null, 'Build the authentication module')
     let row = db.prepare('SELECT rowid FROM messages WHERE id = ?').get('msg-1') as { rowid: number }

@@ -497,7 +497,7 @@ describe('FreshnessGuard — FTS indexing efficiency', () => {
     await guard.ensureFresh()
 
     // Verify FTS entries exist
-    const ftsResults = db.prepare("SELECT content_preview FROM messages_fts WHERE content_preview MATCH 'fix'").all() as Array<{ content_preview: string }>
+    const ftsResults = db.prepare("SELECT search_text FROM messages_fts WHERE search_text MATCH 'fix'").all() as Array<{ search_text: string }>
     expect(ftsResults.length).toBeGreaterThanOrEqual(1)
   })
 

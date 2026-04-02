@@ -7,6 +7,7 @@ export interface SearchResult {
   readonly projectSlug: string
   readonly timestamp: string
   readonly contentPreview: string
+  readonly matchSnippet: string
   readonly rank: number
 }
 
@@ -24,7 +25,7 @@ export class SearchIndex {
   search(query: string, options?: SearchOptions): SearchResult[] {
     if (!query.trim()) return []
 
-    const conditions: string[] = ['messages_fts MATCH ?']
+    const conditions: string[] = ['messages_fts.search_text MATCH ?']
     const params: unknown[] = [query]
 
     if (options?.projectSlug) {
@@ -57,6 +58,7 @@ export class SearchIndex {
         COALESCE(s.project_slug, '') AS projectSlug,
         m.timestamp,
         m.content_preview AS contentPreview,
+        snippet(messages_fts, 0, '»', '«', '…', 40) AS matchSnippet,
         rank
       FROM messages_fts
       JOIN messages m ON m.rowid = messages_fts.rowid
@@ -74,6 +76,7 @@ export class SearchIndex {
       projectSlug: string
       timestamp: string
       contentPreview: string
+      matchSnippet: string
       rank: number
     }>
 
@@ -83,6 +86,7 @@ export class SearchIndex {
       projectSlug: row.projectSlug ?? '',
       timestamp: row.timestamp ?? '',
       contentPreview: row.contentPreview ?? '',
+      matchSnippet: row.matchSnippet ?? '',
       rank: row.rank,
     }))
   }
@@ -90,7 +94,7 @@ export class SearchIndex {
   searchCount(query: string, options?: { projectSlug?: string; sessionId?: string }): number {
     if (!query.trim()) return 0
 
-    const conditions: string[] = ['messages_fts MATCH ?']
+    const conditions: string[] = ['messages_fts.search_text MATCH ?']
     const params: unknown[] = [query]
 
     if (options?.projectSlug) {

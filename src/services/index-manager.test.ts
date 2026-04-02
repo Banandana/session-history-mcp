@@ -185,7 +185,7 @@ describe('IndexManager', () => {
     it('sets user_version to 3 (latest)', () => {
       manager.ensureSchema()
       const version = db.pragma('user_version', { simple: true }) as number
-      expect(version).toBe(3)
+      expect(version).toBe(4)
     })
 
     it('creates new sort indexes', () => {
@@ -269,7 +269,7 @@ describe('IndexManager', () => {
       manager.ensureSchema()
 
       const version = db.pragma('user_version', { simple: true }) as number
-      expect(version).toBe(3)
+      expect(version).toBe(4)
     })
 
     it('creates turn_events indexes', () => {
@@ -357,7 +357,7 @@ describe('IndexManager', () => {
       manager.ensureSchema()
 
       const vAfter = db.pragma('user_version', { simple: true }) as number
-      expect(vAfter).toBe(3)
+      expect(vAfter).toBe(4)
     })
 
     it('creates new sort indexes', () => {

@@ -49,11 +49,12 @@ export class IndexManager {
         tool_names TEXT,
         is_error INTEGER DEFAULT 0,
         is_correction INTEGER DEFAULT 0,
-        content_preview TEXT
+        content_preview TEXT,
+        search_text TEXT
       );
 
       CREATE VIRTUAL TABLE IF NOT EXISTS messages_fts USING fts5(
-        content_preview,
+        search_text,
         content='messages',
         content_rowid='rowid'
       );
@@ -122,6 +123,11 @@ export class IndexManager {
     if (userVersion < 3) {
       this.db.transaction(() => {
         this.migrateToV3()
+      })()
+    }
+    if (userVersion < 4) {
+      this.db.transaction(() => {
+        this.migrateToV4()
       })()
     }
   }
@@ -245,6 +251,28 @@ export class IndexManager {
     `)
 
     this.db.pragma('user_version = 3')
+  }
+
+  private migrateToV4(): void {
+    // Full-text search on complete message content instead of 500-char preview.
+    // Add search_text column for full searchable content.
+    this.addColumnIfMissing('messages', 'search_text', 'TEXT')
+
+    // Recreate FTS table to index search_text instead of content_preview.
+    // Drop old FTS and create new one as external-content table pointing at search_text.
+    this.db.exec(`DROP TABLE IF EXISTS messages_fts`)
+    this.db.exec(`
+      CREATE VIRTUAL TABLE IF NOT EXISTS messages_fts USING fts5(
+        search_text,
+        content='messages',
+        content_rowid='rowid'
+      )
+    `)
+
+    // Force full re-index of all sessions so search_text gets populated
+    this.db.exec(`UPDATE sessions SET byte_offset = 0`)
+
+    this.db.pragma('user_version = 4')
   }
 
   getSessionOffset(sessionId: string): number {
