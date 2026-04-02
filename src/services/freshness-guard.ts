@@ -5,7 +5,6 @@ import type { LocalLlmClient } from './local-llm-client'
 import type { IndexState, NormalizedMessage, SessionMeta } from '../types'
 import type { TurnIndexer } from './turn-indexer'
 import { generateTopic } from './topic-generator'
-import { distillConversation } from './conversation-distiller'
 
 function formatToolCounts(json: string): string {
   try {
@@ -94,20 +93,12 @@ export class FreshnessGuard {
 
     for (const row of rows) {
       try {
-        // Get messages for distillation
-        const messages: NormalizedMessage[] = []
-        for await (const msg of this.registry.getMessages(row.id)) {
-          messages.push(msg)
-        }
-
-        const distilled = distillConversation(messages, { n: 10 })
-
         // Build context from stored metrics
         const session = this.db.prepare(
           'SELECT duration_minutes, total_turns, total_tokens, error_count, correction_count, tool_counts, files_changed FROM sessions WHERE id = ?'
         ).get(row.id) as Record<string, unknown>
 
-        // Format metrics + conversation for LLM
+        // Format metrics for LLM
         const metricsBlock = [
           `Session: ${session.duration_minutes ?? 0} min, ${session.total_turns ?? 0} turns, ${session.total_tokens ?? 0} tokens`,
           `Errors: ${session.error_count ?? 0}, Corrections: ${session.correction_count ?? 0}`,
@@ -115,11 +106,7 @@ export class FreshnessGuard {
           session.files_changed ? `Files: ${formatFilesChanged(session.files_changed as string)}` : null,
         ].filter(Boolean).join('\n')
 
-        const conversationBlock = distilled.messages
-          .map(m => m.role === 'action' ? m.text : `${m.role}: ${m.text}`)
-          .join('\n')
-
-        const prompt = `${metricsBlock}\n\nConversation:\n${conversationBlock}\n\nSummarize this session in 2-3 sentences. Focus on what was accomplished and the outcome.`
+        const prompt = `${metricsBlock}\n\nSummarize this coding session in 2-3 sentences. Focus on what was accomplished and the outcome.`
 
         const summary = await this.llmClient.summarize(prompt)
         if (summary) {

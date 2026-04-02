@@ -7,21 +7,10 @@ import type { FreshnessGuard } from '../services/freshness-guard'
 import type { ResponseFormatter } from '../services/response-formatter'
 import type { DatabaseConnection } from '../infrastructure/database'
 import type { NormalizedMessage, ContentBlock } from '../types'
+import type { ExpandedTurn } from '../types/conversation'
 import { ConversationParser } from '../adapters/claude-code/conversation-parser'
 
-// --- Types (local for now, moved to src/types/ in Task 8) ---
-
-export interface ExpandedTurn {
-  readonly turnIndex: number
-  readonly turnId: string
-  readonly role: string
-  readonly timestamp: string
-  readonly contentBlocks: readonly ContentBlock[]
-  readonly toolNames: readonly string[]
-  readonly isError: boolean
-  readonly isCorrection: boolean
-  readonly tokenUsage?: { readonly input_tokens: number; readonly output_tokens: number }
-}
+export type { ExpandedTurn }
 
 // --- Truncation logic ---
 

@@ -79,5 +79,3 @@ export interface FileChange {
   readonly operation: 'read' | 'write' | 'edit' | 'create'
   readonly timestamp: string
 }
-
-export type Focus = 'general' | 'tools' | 'errors' | 'files' | 'decisions'

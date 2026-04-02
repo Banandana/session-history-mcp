@@ -7,9 +7,7 @@ import type { ResponseFormatter } from '../services/response-formatter'
 import type { DatabaseConnection } from '../infrastructure/database'
 import type { AdapterRegistry } from '../services/adapter-registry'
 import type { NormalizedMessage } from '../types'
-import { distillConversation } from '../services/conversation-distiller'
 import type { LocalLlmClient } from '../services/local-llm-client'
-import type { Focus } from '../types'
 
 function formatTopTools(json: string): string {
   try {
@@ -32,7 +30,6 @@ export function registerGetSession(server: McpServer): void {
     {
       sessionId: z.string().describe('Session ID (UUID)'),
       detail: z.enum(['summary', 'metadata', 'full']).optional().describe('Detail level'),
-      focus: z.enum(['general', 'tools', 'errors', 'files', 'decisions']).optional().describe('Distillation lens for conversation sample (detail=full only)'),
       intent: z.string().max(500).optional().describe('Free-text analysis intent — triggers live LLM analysis (detail=full only)'),
     },
     async (params) => {
@@ -129,49 +126,44 @@ export function registerGetSession(server: McpServer): void {
       }
 
       if (detail === 'full') {
-        const registry = container.resolve<AdapterRegistry>(TOKENS.AdapterRegistry)
-        const messages: NormalizedMessage[] = []
-        for await (const msg of registry.getMessages(params.sessionId)) {
-          messages.push(msg)
-        }
-        const focus: Focus = params.focus ?? 'general'
-        const distilled = distillConversation(messages, { n: 10, focus })
-        result.conversationSample = distilled.messages
-
         // Intent-based LLM analysis
-        if (params.intent && messages.length >= 3) {
+        if (params.intent) {
           try {
-            const llmClient = container.resolve<LocalLlmClient>(TOKENS.LocalLlmClient)
-            const available = await llmClient.isAvailable()
-            if (available) {
-              const metricsBlock = [
-                `Duration: ${session.duration_minutes ?? 0} min, ${session.total_turns ?? 0} turns`,
-                `Errors: ${session.error_count ?? 0}, Corrections: ${session.correction_count ?? 0}`,
-                session.tool_counts ? `Tools: ${formatTopTools(session.tool_counts)}` : null,
-                session.files_changed ? `Files: ${formatFiles(session.files_changed)}` : null,
-              ].filter(Boolean).join('\n')
+            const registry = container.resolve<AdapterRegistry>(TOKENS.AdapterRegistry)
+            const messages: NormalizedMessage[] = []
+            for await (const msg of registry.getMessages(params.sessionId)) {
+              messages.push(msg)
+            }
 
-              const conversationBlock = distilled.messages
-                .map(m => m.role === 'action' ? m.text : `${m.role}: ${m.text}`)
-                .join('\n')
+            if (messages.length >= 3) {
+              const llmClient = container.resolve<LocalLlmClient>(TOKENS.LocalLlmClient)
+              const available = await llmClient.isAvailable()
+              if (available) {
+                const metricsBlock = [
+                  `Duration: ${session.duration_minutes ?? 0} min, ${session.total_turns ?? 0} turns`,
+                  `Errors: ${session.error_count ?? 0}, Corrections: ${session.correction_count ?? 0}`,
+                  session.tool_counts ? `Tools: ${formatTopTools(session.tool_counts)}` : null,
+                  session.files_changed ? `Files: ${formatFiles(session.files_changed)}` : null,
+                ].filter(Boolean).join('\n')
 
-              const prompt = `You are analyzing a coding session for a specific purpose.\n\nCaller's intent: ${params.intent}\nFocus area: ${focus}\n\nSession metrics:\n${metricsBlock}\n\nConversation (${focus}-focused):\n${conversationBlock}\n\nAnswer:\n1. Is this session relevant to the caller's intent? (yes/no)\n2. If relevant, explain specifically how — cite concrete details.\n3. If not relevant, say what the session was actually about in one sentence.\n\nBe concise.`
+                const prompt = `You are analyzing a coding session for a specific purpose.\n\nCaller's intent: ${params.intent}\n\nSession metrics:\n${metricsBlock}\n\nAnswer:\n1. Is this session relevant to the caller's intent? (yes/no)\n2. If relevant, explain specifically how — cite concrete details.\n3. If not relevant, say what the session was actually about in one sentence.\n\nBe concise.`
 
-              const llmResponse = await llmClient.summarize(prompt, 300)
-              const relevant = !llmResponse.toLowerCase().startsWith('no')
-              result.analysis = {
-                relevant,
-                summary: llmResponse,
-                generatedAt: new Date().toISOString(),
+                const llmResponse = await llmClient.summarize(prompt, 300)
+                const relevant = !llmResponse.toLowerCase().startsWith('no')
+                result.analysis = {
+                  relevant,
+                  summary: llmResponse,
+                  generatedAt: new Date().toISOString(),
+                }
+              } else {
+                result.analysis = null
               }
             } else {
-              result.analysis = null
+              result.analysis = { relevant: false, summary: 'Too few messages for analysis', reason: 'too_few_messages' }
             }
           } catch {
             result.analysis = null
           }
-        } else if (params.intent && messages.length < 3) {
-          result.analysis = { relevant: false, summary: 'Too few messages for analysis', reason: 'too_few_messages' }
         }
       }
 

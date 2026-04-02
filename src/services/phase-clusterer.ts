@@ -1,12 +1,7 @@
 import type { NormalizedMessage, ContentBlock } from '../types'
+import type { Phase } from '../types/conversation'
 
-export interface Phase {
-  readonly turnRange: { readonly from: number; readonly to: number }
-  readonly description: string
-  readonly toolNames: readonly string[]
-  readonly errorCount: number
-  readonly turnCount: number
-}
+export type { Phase }
 
 type Category = 'Error' | 'Modify' | 'Execute' | 'Explore' | 'Discuss'
 

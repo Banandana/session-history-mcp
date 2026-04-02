@@ -1,13 +1,15 @@
 import { container } from 'tsyringe'
 import type { McpServer } from '@modelcontextprotocol/sdk/server/mcp.js'
 import { z } from 'zod'
-import { join, basename } from 'node:path'
+import { join } from 'node:path'
 import { TOKENS } from '../container/tokens'
 import type { FreshnessGuard } from '../services/freshness-guard'
 import type { ResponseFormatter } from '../services/response-formatter'
 import type { DatabaseConnection } from '../infrastructure/database'
 import type { TurnIndexer } from '../services/turn-indexer'
 import type { NormalizedMessage, ContentBlock, MessageRole } from '../types'
+import type { TurnReference } from '../types/conversation'
+import { extractToolParams } from '../services/tool-summary'
 import { ConversationParser } from '../adapters/claude-code/conversation-parser'
 import type Database from 'better-sqlite3'
 
@@ -25,19 +27,6 @@ interface TurnFilters {
 
 interface FilterResult {
   readonly matches: boolean
-  readonly matchContext?: string
-}
-
-interface TurnReference {
-  readonly sessionId: string
-  readonly turnIndex: number
-  readonly turnId: string
-  readonly role: MessageRole
-  readonly timestamp: string
-  readonly summary: string
-  readonly isError: boolean
-  readonly isCorrection: boolean
-  readonly toolNames?: readonly string[]
   readonly matchContext?: string
 }
 
@@ -63,15 +52,6 @@ interface TurnEventRow {
 }
 
 // ── Helpers ────────────────────────────────────────────────────────────────────
-
-function extractToolParams(name: string, input: unknown): string {
-  if (!input || typeof input !== 'object') return name
-  const params = input as Record<string, unknown>
-  if ('file_path' in params) return `${name}: ${basename(String(params.file_path))}`
-  if ('command' in params) return `${name}: ${String(params.command).slice(0, 60)}`
-  if ('pattern' in params) return `${name}: ${params.pattern}`
-  return name
-}
 
 function getTextContent(blocks: readonly ContentBlock[]): string {
   const parts: string[] = []
@@ -224,7 +204,7 @@ async function querySingleSession(
         summary: summarizeMessage(msg),
         isError: msg.isError,
         isCorrection: msg.isCorrection,
-        toolNames: msg.toolNames,
+        toolNames: msg.toolNames ?? [],
         matchContext: result.matchContext,
       })
     }
@@ -333,12 +313,12 @@ function queryCrossSession(
   ).all(...params, limit, offset) as readonly TurnEventRow[]
 
   const results: TurnReference[] = rows.map(row => {
-    let toolNames: readonly string[] | undefined
+    let toolNames: readonly string[]
     try {
       const parsed = JSON.parse(row.tool_names) as string[]
-      toolNames = parsed.length > 0 ? parsed : undefined
+      toolNames = parsed.length > 0 ? parsed : []
     } catch {
-      toolNames = undefined
+      toolNames = []
     }
 
     // Build summary from DB data
@@ -348,9 +328,9 @@ function queryCrossSession(
         ? row.text_preview.slice(0, 120) + '...'
         : row.text_preview
       summary = `[error: ${truncated}]`
-    } else if (toolNames && toolNames.length > 1) {
+    } else if (toolNames.length > 1) {
       summary = `[${toolNames.join(', ')}]`
-    } else if (toolNames && toolNames.length === 1) {
+    } else if (toolNames.length === 1) {
       summary = `[${toolNames[0]}]`
     } else if (row.text_preview) {
       summary = row.text_preview.length > 120
