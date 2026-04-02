@@ -80,21 +80,22 @@ Add to `~/.claude/settings.local.json` under `mcpServers`:
 }
 ```
 
-### Available Tools (11)
+### Available Tools (12)
 
 | Tool | Purpose |
 |------|---------|
 | `list_projects` | All known projects with metadata |
 | `get_project` | Project detail — CLAUDE.md, settings, memory, stats |
-| `list_sessions` | Sessions filtered by project/date/branch |
-| `get_session` | Session detail — metadata, turns, files, subagents |
-| `get_conversation` | Session overview — phase-clustered activity timeline |
+| `list_sessions` | Sessions filtered by project/date/branch — includes title, cost, mode, tags, models used |
+| `get_session` | Session detail — metadata, turns, files, subagents, PR links, cache stats, context collapses |
+| `get_conversation` | Session overview — phase-clustered activity timeline with cost and cache data |
 | `query_turns` | Search turns by tool name, error status, text pattern, time range |
-| `get_turns` | Full content for specific turns — tool inputs, outputs, text |
-| `search` | FTS5 full-text search across all sessions |
+| `get_turns` | Full content for specific turns — tool inputs, outputs, text, thinking blocks (opt-in), per-turn model and cache tokens |
+| `search` | FTS5 full-text search across all sessions — indexes full message content including tool inputs/outputs |
 | `get_changes` | File operations tracked across sessions |
 | `get_memory` | Cross-project memory access |
-| `analyze` | Pattern discovery — errors, corrections, tool failures |
+| `analyze` | Pattern discovery — errors, corrections, tool failures, cache efficiency, model usage |
+| `deep_analyze` | Send entire session to Opus 1M for comprehensive quality analysis (requires ANTHROPIC_API_KEY) |
 
 ## Git Rules
 
@@ -113,6 +114,43 @@ Supporting infrastructure:
 - `TurnIndexer` service — populates turn_events, integrated into FreshnessGuard sync pipeline
 - `PhaseClusterer` service — groups consecutive turns by activity category with singleton absorption
 - Removed: `conversation-distiller.ts`, `Focus` type, `filterByWindow`
+
+## Session Metadata Ingestion (2026-04-02)
+
+Full gap closure between Claude Code output and session-mcp ingestion. New `MetadataParser` extracts JSONL entry types the conversation parser skips:
+
+- **Session titles**: `custom-title`, `ai-title` → prefer over auto-generated topics
+- **Tags**: user-applied searchable labels
+- **PR links**: `pr-link` → new `pr_links` table, connects sessions to shipped work
+- **Mode**: `coordinator` / `normal` for multi-agent sessions
+- **Context collapses**: `marble-origami-commit` → new `context_collapses` table
+- **Worktree state**, **speculation timing**, **task summaries**
+
+Per-message enrichment:
+- **Cache tokens**: `cache_creation_input_tokens`, `cache_read_input_tokens` stored per message and aggregated per session
+- **Model tracking**: `models_used` JSON array on sessions (sessions can use multiple models)
+- **Thinking presence**: `has_thinking` flag, opt-in retrieval via `includeThinking` param on `get_turns`
+- **Entry point**: `cli`, `sdk-ts`, `sdk-py`, etc.
+- **Git branch / CWD**: extracted per-message (stored session-level)
+
+Schema: V3 migration (12 new session columns, 3 message columns, 2 new tables)
+
+## Full-Text Search (2026-04-02)
+
+FTS indexes full message content, not truncated previews:
+- Text blocks: no truncation
+- Tool inputs: full JSON up to 2K per call (file paths, commands, patterns searchable)
+- Tool results: up to 5K per result (error messages, command output, file contents)
+- `content_preview` (500 chars) kept for display; `search_text` (full) used for FTS
+- Search results include `matchSnippet` with `»highlighted«` context
+- Schema: V4 migration (adds `search_text` column, rebuilds FTS table, forces re-index)
+
+## LLM Client Architecture (2026-04-02)
+
+Dual-backend LLM support via `FallbackLlmClient`:
+- **AnthropicLlmClient**: Native Messages API, requires `ANTHROPIC_API_KEY` or `FANTHROPIC_API_KEY`
+- **OpenAiLlmClient**: OpenAI-compatible (local vLLM at 10.1.10.20)
+- Priority: Anthropic > local. Background summarization uses local (cheap); `deep_analyze` requires Anthropic (expensive, full session to Opus 1M)
 
 ## Efficiency Fixes (2026-04-02)
 
