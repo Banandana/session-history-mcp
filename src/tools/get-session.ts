@@ -7,7 +7,7 @@ import type { ResponseFormatter } from '../services/response-formatter'
 import type { DatabaseConnection } from '../infrastructure/database'
 import type { AdapterRegistry } from '../services/adapter-registry'
 import type { NormalizedMessage } from '../types'
-import type { LocalLlmClient } from '../services/local-llm-client'
+import type { FallbackLlmClient } from '../services/llm-client'
 
 function formatTopTools(json: string): string {
   try {
@@ -189,7 +189,7 @@ export function registerGetSession(server: McpServer): void {
             }
 
             if (messages.length >= 3) {
-              const llmClient = container.resolve<LocalLlmClient>(TOKENS.LocalLlmClient)
+              const llmClient = container.resolve<FallbackLlmClient>(TOKENS.LlmClient)
               const available = await llmClient.isAvailable()
               if (available) {
                 const metricsBlock = [
@@ -199,9 +199,10 @@ export function registerGetSession(server: McpServer): void {
                   session.files_changed ? `Files: ${formatFiles(session.files_changed)}` : null,
                 ].filter(Boolean).join('\n')
 
-                const prompt = `You are analyzing a coding session for a specific purpose.\n\nCaller's intent: ${params.intent}\n\nSession metrics:\n${metricsBlock}\n\nAnswer:\n1. Is this session relevant to the caller's intent? (yes/no)\n2. If relevant, explain specifically how — cite concrete details.\n3. If not relevant, say what the session was actually about in one sentence.\n\nBe concise.`
+                const systemPrompt = 'You are analyzing a coding session for a specific purpose. Answer: 1. Is this session relevant to the caller\'s intent? (yes/no) 2. If relevant, explain specifically how. 3. If not, say what the session was actually about in one sentence. Be concise.'
+                const userContent = `Caller's intent: ${params.intent}\n\nSession metrics:\n${metricsBlock}`
 
-                const llmResponse = await llmClient.summarize(prompt, 300)
+                const llmResponse = await llmClient.analyze(systemPrompt, userContent, 300)
                 const relevant = !llmResponse.toLowerCase().startsWith('no')
                 result.analysis = {
                   relevant,

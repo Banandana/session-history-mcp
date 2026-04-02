@@ -10,6 +10,7 @@ import { registerGetMemory } from './get-memory'
 import { registerAnalyze } from './analyze'
 import { registerGetTurns } from './get-turns'
 import { registerQueryTurns } from './query-turns'
+import { registerDeepAnalyze } from './deep-analyze'
 
 export function registerTools(server: McpServer): void {
   registerListProjects(server)
@@ -23,4 +24,5 @@ export function registerTools(server: McpServer): void {
   registerAnalyze(server)
   registerGetTurns(server)
   registerQueryTurns(server)
+  registerDeepAnalyze(server)
 }
