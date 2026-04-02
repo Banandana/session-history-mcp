@@ -201,7 +201,7 @@ export class FallbackLlmClient implements LlmClient {
 export function createLlmClient(localUrl: string, localModel: string): FallbackLlmClient {
   const clients: LlmClient[] = []
 
-  const anthropicKey = process.env.ANTHROPIC_API_KEY
+  const anthropicKey = process.env.ANTHROPIC_API_KEY ?? process.env.FANTHROPIC_API_KEY
   if (anthropicKey) {
     clients.push(new AnthropicLlmClient(anthropicKey, 'claude-opus-4-6'))
   }
