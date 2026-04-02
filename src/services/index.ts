@@ -9,6 +9,7 @@ export { ResponseFormatter } from './response-formatter'
 export { SearchIndex } from './search-index'
 
 export { TokenBudgetManager } from './token-budget-manager'
+export { TurnIndexer } from './turn-indexer'
 export { generateTopic } from './topic-generator'
 export { distillConversation } from './conversation-distiller'
 export type { DistilledMessage, DistilledConversation, DistillOptions } from './conversation-distiller'
