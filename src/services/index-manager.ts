@@ -112,6 +112,35 @@ export class IndexManager {
     if (userVersion < 1) {
       this.migrateToV1()
     }
+    if (userVersion < 2) {
+      this.migrateToV2()
+    }
+  }
+
+  private migrateToV2(): void {
+    this.db.exec(`
+      CREATE TABLE IF NOT EXISTS turn_events (
+        session_id    TEXT NOT NULL REFERENCES sessions(id) ON DELETE CASCADE,
+        turn_index    INTEGER NOT NULL,
+        turn_id       TEXT NOT NULL,
+        role          TEXT NOT NULL,
+        timestamp     TEXT NOT NULL,
+        tool_names    TEXT NOT NULL DEFAULT '[]',
+        is_error      INTEGER NOT NULL DEFAULT 0,
+        is_correction INTEGER NOT NULL DEFAULT 0,
+        text_preview  TEXT,
+        PRIMARY KEY (session_id, turn_index)
+      );
+
+      CREATE INDEX IF NOT EXISTS idx_turn_events_error ON turn_events(is_error) WHERE is_error = 1;
+      CREATE INDEX IF NOT EXISTS idx_turn_events_correction ON turn_events(is_correction) WHERE is_correction = 1;
+      CREATE INDEX IF NOT EXISTS idx_turn_events_timestamp ON turn_events(timestamp);
+      CREATE INDEX IF NOT EXISTS idx_turn_events_session_id ON turn_events(session_id);
+    `)
+
+    this.addColumnIfMissing('sessions', 'turn_events_indexed', 'INTEGER DEFAULT 0')
+
+    this.db.pragma('user_version = 2')
   }
 
   private hasColumn(table: string, column: string): boolean {

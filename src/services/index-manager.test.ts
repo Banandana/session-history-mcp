@@ -182,10 +182,10 @@ describe('IndexManager', () => {
       expect(columns).toContain('summary_generated_at')
     })
 
-    it('sets user_version to 1', () => {
+    it('sets user_version to 2 (latest)', () => {
       manager.ensureSchema()
       const version = db.pragma('user_version', { simple: true }) as number
-      expect(version).toBe(1)
+      expect(version).toBe(2)
     })
 
     it('creates new sort indexes', () => {
@@ -235,6 +235,55 @@ describe('IndexManager', () => {
       expect(ids.has('s1')).toBe(true)
       expect(ids.has('s2')).toBe(true)
       expect(ids.size).toBe(2)
+    })
+  })
+
+  // ─── V1 → V2 migration ───────────────────────────────────────────────────
+
+  describe('v1 → v2 migration (turn_events)', () => {
+    it('creates turn_events table with correct schema', () => {
+      manager.ensureSchema()
+
+      const columns = db.prepare("PRAGMA table_info('turn_events')").all() as Array<{ name: string; type: string; notnull: number }>
+      const colNames = columns.map(c => c.name)
+
+      expect(colNames).toContain('session_id')
+      expect(colNames).toContain('turn_index')
+      expect(colNames).toContain('turn_id')
+      expect(colNames).toContain('role')
+      expect(colNames).toContain('timestamp')
+      expect(colNames).toContain('tool_names')
+      expect(colNames).toContain('is_error')
+      expect(colNames).toContain('is_correction')
+      expect(colNames).toContain('text_preview')
+    })
+
+    it('adds turn_events_indexed column to sessions', () => {
+      manager.ensureSchema()
+
+      const columns = db.prepare("PRAGMA table_info('sessions')").all() as Array<{ name: string }>
+      expect(columns.some(c => c.name === 'turn_events_indexed')).toBe(true)
+    })
+
+    it('sets user_version to 2', () => {
+      manager.ensureSchema()
+
+      const version = db.pragma('user_version', { simple: true }) as number
+      expect(version).toBe(2)
+    })
+
+    it('creates turn_events indexes', () => {
+      manager.ensureSchema()
+
+      expect(indexExists(db, 'idx_turn_events_error')).toBe(true)
+      expect(indexExists(db, 'idx_turn_events_correction')).toBe(true)
+      expect(indexExists(db, 'idx_turn_events_timestamp')).toBe(true)
+      expect(indexExists(db, 'idx_turn_events_session_id')).toBe(true)
+    })
+
+    it('migration is idempotent — calling ensureSchema twice does not error', () => {
+      manager.ensureSchema()
+      expect(() => manager.ensureSchema()).not.toThrow()
     })
   })
 
@@ -289,14 +338,14 @@ describe('IndexManager', () => {
       expect(tableExists(db, 'summaries')).toBe(false)
     })
 
-    it('sets user_version to 1', () => {
+    it('sets user_version to 2 (all migrations applied)', () => {
       const vBefore = db.pragma('user_version', { simple: true }) as number
       expect(vBefore).toBe(0)
 
       manager.ensureSchema()
 
       const vAfter = db.pragma('user_version', { simple: true }) as number
-      expect(vAfter).toBe(1)
+      expect(vAfter).toBe(2)
     })
 
     it('creates new sort indexes', () => {
