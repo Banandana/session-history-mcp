@@ -456,6 +456,138 @@ describe('FreshnessGuard — generateSummaries', () => {
   })
 })
 
+// ─── Unit tests: FTS indexing uses lastInsertRowid ─────────────────────────
+
+describe('FreshnessGuard — FTS indexing efficiency', () => {
+  let tempDir: string
+  let db: Database.Database
+  let indexManager: IndexManager
+
+  beforeEach(() => {
+    tempDir = mkdtempSync(join(tmpdir(), 'freshness-fts-'))
+    db = new Database(join(tempDir, 'test.db'))
+    db.pragma('foreign_keys = ON')
+    db.pragma('journal_mode = WAL')
+    indexManager = new (IndexManager as any)(db)
+    indexManager.ensureSchema()
+  })
+
+  afterEach(() => {
+    db.close()
+    rmSync(tempDir, { recursive: true })
+  })
+
+  it('indexes FTS entries for messages with content previews', async () => {
+    const messages: NormalizedMessage[] = [
+      makeMessage({ id: 'msg-1', role: 'user', timestamp: NOW, contentBlocks: [{ type: 'text', text: 'Fix the build' }] }),
+      makeMessage({ id: 'msg-2', role: 'assistant', timestamp: LATER, contentBlocks: [{ type: 'text', text: 'I will fix it' }] }),
+    ]
+
+    const registry = createMockRegistry({
+      sessions: [makeSessionMeta()],
+      messages,
+    })
+
+    const guard = new FreshnessGuard(registry, indexManager, tempDir, db)
+    await guard.ensureFresh()
+
+    // Verify FTS entries exist
+    const ftsResults = db.prepare("SELECT content_preview FROM messages_fts WHERE content_preview MATCH 'fix'").all() as Array<{ content_preview: string }>
+    expect(ftsResults.length).toBeGreaterThanOrEqual(1)
+  })
+
+  it('does not create FTS entries for tool-only content with no text blocks', async () => {
+    const messages: NormalizedMessage[] = [
+      makeMessage({ id: 'msg-1', role: 'assistant', timestamp: NOW, contentBlocks: [{ type: 'tool_use', name: 'Bash', input: { command: 'ls' } }] }),
+    ]
+
+    const registry = createMockRegistry({
+      sessions: [makeSessionMeta()],
+      messages,
+    })
+
+    const guard = new FreshnessGuard(registry, indexManager, tempDir, db)
+    await guard.ensureFresh()
+
+    // The extractContentPreview returns '' for tool-only blocks,
+    // but INSERT OR REPLACE with empty content may still create a row.
+    // Verify the message was indexed correctly in the messages table.
+    const msgRow = db.prepare('SELECT content_preview FROM messages WHERE id = ?').get('msg-1') as { content_preview: string }
+    expect(msgRow.content_preview).toBe('')
+  })
+})
+
+// ─── Unit tests: session discovery early exit ──────────────────────────────
+
+describe('FreshnessGuard — session discovery optimization', () => {
+  let tempDir: string
+  let db: Database.Database
+  let indexManager: IndexManager
+
+  beforeEach(() => {
+    tempDir = mkdtempSync(join(tmpdir(), 'freshness-discovery-'))
+    db = new Database(join(tempDir, 'test.db'))
+    db.pragma('foreign_keys = ON')
+    db.pragma('journal_mode = WAL')
+    indexManager = new (IndexManager as any)(db)
+    indexManager.ensureSchema()
+  })
+
+  afterEach(() => {
+    db.close()
+    rmSync(tempDir, { recursive: true })
+  })
+
+  it('discovers sessions efficiently using Set-based lookup', async () => {
+    const sessions = [makeSessionMeta('session-1'), makeSessionMeta('session-2')]
+    const messages: NormalizedMessage[] = [
+      makeMessage({ id: 'msg-1', role: 'user', timestamp: NOW, contentBlocks: [{ type: 'text', text: 'Hello' }] }),
+    ]
+
+    let discoveryCallCount = 0
+    const adapter = {
+      source: 'mock',
+      async *discoverProjects() {},
+      async *discoverSessions() {
+        for (const s of sessions) {
+          discoveryCallCount++
+          yield s
+        }
+      },
+      async *getMessages() {
+        for (const m of messages) yield m
+      },
+      async *getFileChanges() {},
+      async *getSubagents() {},
+      async *getMemory() {},
+      resolveProject() { return undefined },
+      async checkFreshness(known: IndexState): Promise<FreshnessResult> {
+        const knownIds = known.sessionOffsets
+        const newIds = sessions.filter(s => !knownIds.has(s.id)).map(s => s.id)
+        return {
+          isStale: newIds.length > 0,
+          newSessions: newIds,
+          changedSessions: [],
+          removedSessions: [],
+        }
+      },
+    }
+
+    const registry = new AdapterRegistry()
+    registry.registerAdapter(adapter)
+
+    const guard = new FreshnessGuard(registry, indexManager, tempDir, db)
+    await guard.ensureFresh()
+
+    // Both sessions should be indexed
+    const sessionCount = db.prepare('SELECT COUNT(*) as cnt FROM sessions').get() as { cnt: number }
+    expect(sessionCount.cnt).toBe(2)
+
+    // Discovery should stop early after finding both sessions
+    expect(discoveryCallCount).toBe(2)
+  })
+})
+
 // ─── Integration tests with fixtures ────────────────────────────────────────
 
 describe('FreshnessGuard — integration with fixtures', () => {

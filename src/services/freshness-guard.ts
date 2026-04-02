@@ -67,7 +67,7 @@ export class FreshnessGuard {
     }
 
     // 5. Fire-and-forget LLM summarization — must not block sync
-    void this.generateSummaries()
+    void this.generateSummaries().catch(() => { /* summarization failure is non-critical */ })
 
     // 6. Return metadata
     const sessionCount = this.indexManager.getKnownSessionIds().size
@@ -121,11 +121,14 @@ export class FreshnessGuard {
 
   private async syncNewSessions(sessionIds: readonly string[]): Promise<void> {
     // Discover session metadata for each new session
+    const sessionIdSet = new Set(sessionIds)
     const sessionMetaMap = new Map<string, SessionMeta>()
     for await (const session of this.registry.discoverSessions()) {
-      if (sessionIds.includes(session.id)) {
+      if (sessionIdSet.has(session.id)) {
         sessionMetaMap.set(session.id, session)
       }
+      // Stop early once we've found all needed sessions
+      if (sessionMetaMap.size === sessionIdSet.size) break
     }
 
     const insertSession = this.db.prepare(`
@@ -191,12 +194,9 @@ export class FreshnessGuard {
           contentPreview,
         )
 
-        // Insert into FTS with the rowid from messages table
-        if (contentPreview) {
-          const row = this.db.prepare('SELECT rowid FROM messages WHERE id = ?').get(msg.id) as { rowid: number } | undefined
-          if (row) {
-            insertFts.run(row.rowid, contentPreview)
-          }
+        // Insert into FTS using the rowid returned by the INSERT
+        if (contentPreview && result.lastInsertRowid) {
+          insertFts.run(result.lastInsertRowid, contentPreview)
         }
       }
 
@@ -242,15 +242,11 @@ export class FreshnessGuard {
         )
       }
 
-      // Update byte offset — get current file size through adapter
-      // We use fileSize indirectly; for now set offset to mark as fully indexed
-      this.indexManager.updateSessionOffset(sessionId, Number.MAX_SAFE_INTEGER)
-
       // Compute and store session metrics
       this.computeSessionMetrics(sessionId)
     }
 
-    // Now update offsets with real file sizes
+    // Update offsets with real file sizes
     await this.updateFileOffsets(sessionIds)
   }
 
@@ -298,8 +294,7 @@ export class FreshnessGuard {
         if (contentPreview) {
           const row = this.db.prepare('SELECT rowid FROM messages WHERE id = ?').get(msg.id) as { rowid: number } | undefined
           if (row) {
-            this.db.prepare('DELETE FROM messages_fts WHERE rowid = ?').run(row.rowid)
-            insertFts.run(row.rowid, contentPreview)
+            this.db.prepare('INSERT OR REPLACE INTO messages_fts (rowid, content_preview) VALUES (?, ?)').run(row.rowid, contentPreview)
           }
         }
       }

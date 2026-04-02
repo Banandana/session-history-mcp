@@ -18,7 +18,7 @@ export class TurnIndexer {
       for (let i = 0; i < msgs.length; i++) {
         const msg = msgs[i]
         const toolNames = msg.toolNames && msg.toolNames.length > 0
-          ? JSON.stringify([...msg.toolNames])
+          ? JSON.stringify(msg.toolNames)
           : '[]'
         const textPreview = this.extractPreview(msg)
 

@@ -1,4 +1,4 @@
-import type { ContentBlock, TokenUsage } from './session'
+import type { ContentBlock, MessageRole, TokenUsage } from './session'
 
 export interface Phase {
   readonly turnRange: { readonly from: number; readonly to: number }
@@ -13,7 +13,7 @@ export interface TurnReference {
   readonly turnIndex: number
   readonly turnId: string
   readonly timestamp: string
-  readonly role: string
+  readonly role: MessageRole
   readonly summary: string
   readonly toolNames: readonly string[]
   readonly isError: boolean
@@ -24,7 +24,7 @@ export interface TurnReference {
 export interface ExpandedTurn {
   readonly turnIndex: number
   readonly turnId: string
-  readonly role: string
+  readonly role: MessageRole
   readonly timestamp: string
   readonly contentBlocks: readonly ContentBlock[]
   readonly toolNames: readonly string[]

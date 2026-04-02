@@ -53,6 +53,26 @@ interface TurnEventRow {
 
 // ── Helpers ────────────────────────────────────────────────────────────────────
 
+export function parseToolNames(json: string): readonly string[] {
+  try {
+    const parsed = JSON.parse(json) as string[]
+    return parsed.length > 0 ? parsed : []
+  } catch {
+    return []
+  }
+}
+
+export function summarizeFromDbRow(isError: boolean, toolNames: readonly string[], textPreview: string | null): string {
+  if (isError && textPreview) {
+    const truncated = textPreview.length > 120 ? textPreview.slice(0, 120) + '...' : textPreview
+    return `[error: ${truncated}]`
+  }
+  if (toolNames.length > 1) return `[${toolNames.join(', ')}]`
+  if (toolNames.length === 1) return `[${toolNames[0]}]`
+  if (textPreview) return textPreview.length > 120 ? textPreview.slice(0, 120) + '...' : textPreview
+  return ''
+}
+
 function getTextContent(blocks: readonly ContentBlock[]): string {
   const parts: string[] = []
   for (const block of blocks) {
@@ -313,30 +333,8 @@ function queryCrossSession(
   ).all(...params, limit, offset) as readonly TurnEventRow[]
 
   const results: TurnReference[] = rows.map(row => {
-    let toolNames: readonly string[]
-    try {
-      const parsed = JSON.parse(row.tool_names) as string[]
-      toolNames = parsed.length > 0 ? parsed : []
-    } catch {
-      toolNames = []
-    }
-
-    // Build summary from DB data
-    let summary = ''
-    if (row.is_error && row.text_preview) {
-      const truncated = row.text_preview.length > 120
-        ? row.text_preview.slice(0, 120) + '...'
-        : row.text_preview
-      summary = `[error: ${truncated}]`
-    } else if (toolNames.length > 1) {
-      summary = `[${toolNames.join(', ')}]`
-    } else if (toolNames.length === 1) {
-      summary = `[${toolNames[0]}]`
-    } else if (row.text_preview) {
-      summary = row.text_preview.length > 120
-        ? row.text_preview.slice(0, 120) + '...'
-        : row.text_preview
-    }
+    const toolNames = parseToolNames(row.tool_names)
+    const summary = summarizeFromDbRow(row.is_error === 1, toolNames, row.text_preview)
 
     return {
       sessionId: row.session_id,

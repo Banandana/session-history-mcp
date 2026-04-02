@@ -109,12 +109,12 @@ export function registerGetConversation(server: McpServer): void {
         }
 
         // 3. Merge smallest adjacent phases until under budget
-        while (phases.length > 2 && estimateTokens({ phases }) > params.maxTokens * 0.7) {
+        const tokenBudget = params.maxTokens * 0.7
+        while (phases.length > 2 && estimateTokens({ phases }) > tokenBudget) {
+          // Find the smallest phase in one pass
           let smallestIdx = 0
-          let smallestCount = Infinity
-          for (let i = 0; i < phases.length; i++) {
-            if (phases[i].turnCount < smallestCount) {
-              smallestCount = phases[i].turnCount
+          for (let i = 1; i < phases.length; i++) {
+            if (phases[i].turnCount < phases[smallestIdx].turnCount) {
               smallestIdx = i
             }
           }

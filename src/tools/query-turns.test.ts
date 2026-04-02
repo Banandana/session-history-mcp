@@ -1,6 +1,6 @@
 import 'reflect-metadata'
 import { describe, it, expect } from 'vitest'
-import { messageMatchesFilters, summarizeMessage } from './query-turns'
+import { messageMatchesFilters, summarizeMessage, summarizeFromDbRow, parseToolNames } from './query-turns'
 import type { NormalizedMessage } from '../types'
 
 function makeMessage(overrides: Partial<NormalizedMessage> & { id: string }): NormalizedMessage {
@@ -64,6 +64,50 @@ describe('messageMatchesFilters', () => {
     const msg = makeMessage({ id: '1', role: 'assistant', isError: true, toolNames: ['Bash'] })
     expect(messageMatchesFilters(msg, 0, { isError: true, toolNames: ['Bash'] }).matches).toBe(true)
     expect(messageMatchesFilters(msg, 0, { isError: true, toolNames: ['Read'] }).matches).toBe(false)
+  })
+})
+
+describe('parseToolNames', () => {
+  it('parses valid JSON array', () => {
+    expect(parseToolNames('["Bash","Edit"]')).toEqual(['Bash', 'Edit'])
+  })
+
+  it('returns empty array for empty JSON array', () => {
+    expect(parseToolNames('[]')).toEqual([])
+  })
+
+  it('returns empty array for invalid JSON', () => {
+    expect(parseToolNames('not-json')).toEqual([])
+  })
+})
+
+describe('summarizeFromDbRow', () => {
+  it('formats error with text preview', () => {
+    const result = summarizeFromDbRow(true, [], 'command not found')
+    expect(result).toBe('[error: command not found]')
+  })
+
+  it('truncates long error text to 120 chars', () => {
+    const longText = 'a'.repeat(200)
+    const result = summarizeFromDbRow(true, [], longText)
+    expect(result).toContain('[error:')
+    expect(result.length).toBeLessThanOrEqual(135) // [error: + 120 + ... + ]
+  })
+
+  it('formats multi-tool turns', () => {
+    expect(summarizeFromDbRow(false, ['Read', 'Grep'], null)).toBe('[Read, Grep]')
+  })
+
+  it('formats single-tool turns', () => {
+    expect(summarizeFromDbRow(false, ['Bash'], null)).toBe('[Bash]')
+  })
+
+  it('uses text preview when no tools', () => {
+    expect(summarizeFromDbRow(false, [], 'hello world')).toBe('hello world')
+  })
+
+  it('returns empty string when nothing available', () => {
+    expect(summarizeFromDbRow(false, [], null)).toBe('')
   })
 })
 

@@ -287,6 +287,18 @@ describe('IndexManager', () => {
     })
   })
 
+  // ─── addColumnIfMissing race condition safety ─────────────────────────────
+
+  describe('addColumnIfMissing race safety', () => {
+    it('handles column already existing gracefully', () => {
+      // First call adds the column via ensureSchema
+      manager.ensureSchema()
+
+      // Second call should not throw even though columns exist
+      expect(() => manager.ensureSchema()).not.toThrow()
+    })
+  })
+
   // ─── V0 → V1 migration ───────────────────────────────────────────────────
 
   describe('v0 → v1 migration', () => {

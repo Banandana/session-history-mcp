@@ -110,10 +110,14 @@ export class IndexManager {
     const userVersion = this.db.pragma('user_version', { simple: true }) as number
 
     if (userVersion < 1) {
-      this.migrateToV1()
+      this.db.transaction(() => {
+        this.migrateToV1()
+      })()
     }
     if (userVersion < 2) {
-      this.migrateToV2()
+      this.db.transaction(() => {
+        this.migrateToV2()
+      })()
     }
   }
 
@@ -150,7 +154,12 @@ export class IndexManager {
 
   private addColumnIfMissing(table: string, column: string, definition: string): void {
     if (!this.hasColumn(table, column)) {
-      this.db.exec(`ALTER TABLE ${table} ADD COLUMN ${column} ${definition}`)
+      try {
+        this.db.exec(`ALTER TABLE ${table} ADD COLUMN ${column} ${definition}`)
+      } catch (err) {
+        // Column may have been added concurrently — verify it exists now
+        if (!this.hasColumn(table, column)) throw err
+      }
     }
   }
 
