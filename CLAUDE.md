@@ -96,6 +96,24 @@ Add to `~/.claude/settings.local.json` under `mcpServers`:
 | `get_memory` | Cross-project memory access |
 | `analyze` | Pattern discovery — errors, corrections, tool failures |
 
+## Git Rules
+
+- **Never add Co-Authored-By lines** — no Claude co-author tags on commits
+
+## Conversation Navigation (2026-04-01)
+
+Replaced monolithic `get_conversation` with a three-tool navigation flow:
+
+- **`get_conversation`** — Phase-clustered overview. Groups turns by activity category (Error > Modify > Execute > Explore > Discuss). `maxTokens` merges phases and truncates lists to fit budget.
+- **`query_turns`** — Structured search within a session (JSONL) or across sessions (DB). Filters: `toolNames`, `isError`, `isCorrection`, `roles`, `textPattern` (single-session only), `timeRange`, `turnRange`. Cross-session queries use `turn_events` DB table with lazy backfill.
+- **`get_turns`** — Full content expansion by turn ID or index range (max 50). 4-stage truncation when `maxTokens` set: tool_result content → tool_use input → text blocks → drop middle turns.
+
+Supporting infrastructure:
+- `turn_events` table (V2 migration) — per-turn structured data indexed during sync
+- `TurnIndexer` service — populates turn_events, integrated into FreshnessGuard sync pipeline
+- `PhaseClusterer` service — groups consecutive turns by activity category with singleton absorption
+- Removed: `conversation-distiller.ts`, `Focus` type, `filterByWindow`
+
 ## Recently Fixed (2026-03-31)
 
 All issues from `docs/handoff-fix-analyze-and-conversation-quality.md` are resolved:
