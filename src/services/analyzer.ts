@@ -24,7 +24,7 @@ export class Analyzer {
   constructor(private readonly db: Database.Database) {}
 
   analyze(
-    metric: 'errors' | 'corrections' | 'tool_failures' | 'costly_sessions' | 'frequent_files',
+    metric: 'errors' | 'corrections' | 'tool_failures' | 'costly_sessions' | 'frequent_files' | 'cache_efficiency' | 'model_usage',
     options?: AnalyzeOptions
   ): AnalysisResult[] {
     switch (metric) {
@@ -33,6 +33,8 @@ export class Analyzer {
       case 'tool_failures': return this.analyzeToolFailures(options)
       case 'costly_sessions': return this.analyzeCostlySessions(options)
       case 'frequent_files': return this.analyzeFrequentFiles(options)
+      case 'cache_efficiency': return this.analyzeCacheEfficiency(options)
+      case 'model_usage': return this.analyzeModelUsage(options)
     }
   }
 
@@ -175,8 +177,9 @@ export class Analyzer {
     const limit = options?.limit ?? 10
     const params: (string | number)[] = []
 
+    // Prefer cost_usd when available, fall back to total_tokens
     let sql = `
-      SELECT id, project_slug, started_at, topic, total_tokens
+      SELECT id, project_slug, started_at, topic, total_tokens, cost_usd
       FROM sessions
       WHERE 1 = 1
     `
@@ -196,7 +199,7 @@ export class Analyzer {
       params.push(options.dateRange.to)
     }
 
-    sql += ` ORDER BY total_tokens DESC LIMIT ?`
+    sql += ` ORDER BY COALESCE(cost_usd, 0) DESC, total_tokens DESC LIMIT ?`
     params.push(limit)
 
     const rows = this.db.prepare(sql).all(...params) as Array<{
@@ -205,6 +208,7 @@ export class Analyzer {
       started_at: string | null
       topic: string | null
       total_tokens: number
+      cost_usd: number | null
     }>
 
     return rows.map(row => ({
@@ -212,6 +216,107 @@ export class Analyzer {
       count: row.total_tokens,
       sessionId: row.id,
       projectSlug: row.project_slug ?? undefined,
+      details: row.cost_usd != null ? `$${row.cost_usd.toFixed(4)}` : undefined,
+    }))
+  }
+
+  private analyzeCacheEfficiency(options?: AnalyzeOptions): AnalysisResult[] {
+    const limit = options?.limit ?? 10
+    const params: (string | number)[] = []
+
+    let sql = `
+      SELECT id, project_slug, started_at, topic,
+             total_tokens, total_cache_read_tokens, total_cache_creation_tokens
+      FROM sessions
+      WHERE total_tokens > 0
+    `
+
+    if (options?.projectSlug) {
+      sql += ` AND project_slug = ?`
+      params.push(options.projectSlug)
+    }
+
+    if (options?.dateRange?.from) {
+      sql += ` AND started_at >= ?`
+      params.push(options.dateRange.from)
+    }
+
+    if (options?.dateRange?.to) {
+      sql += ` AND started_at <= ?`
+      params.push(options.dateRange.to)
+    }
+
+    // Sessions with worst cache hit ratio (most cache misses)
+    sql += ` ORDER BY CAST(COALESCE(total_cache_read_tokens, 0) AS REAL) / MAX(total_tokens, 1) ASC LIMIT ?`
+    params.push(limit)
+
+    const rows = this.db.prepare(sql).all(...params) as Array<{
+      id: string
+      project_slug: string | null
+      started_at: string | null
+      topic: string | null
+      total_tokens: number
+      total_cache_read_tokens: number | null
+      total_cache_creation_tokens: number | null
+    }>
+
+    return rows.map(row => {
+      const cacheRead = row.total_cache_read_tokens ?? 0
+      const cacheCreation = row.total_cache_creation_tokens ?? 0
+      const hitRate = row.total_tokens > 0 ? Math.round((cacheRead / row.total_tokens) * 100) : 0
+      return {
+        label: formatSessionLabel(row.started_at, row.topic),
+        count: hitRate,
+        sessionId: row.id,
+        projectSlug: row.project_slug ?? undefined,
+        details: `${hitRate}% cache hit, ${cacheCreation} created, ${cacheRead} read, ${row.total_tokens} total`,
+      }
+    })
+  }
+
+  private analyzeModelUsage(options?: AnalyzeOptions): AnalysisResult[] {
+    const limit = options?.limit ?? 20
+    const params: (string | number)[] = []
+
+    let sql = `
+      SELECT model, COUNT(*) as msg_count, SUM(token_count) as total_tokens
+      FROM messages m
+    `
+
+    if (options?.projectSlug) {
+      sql += ` JOIN sessions s ON m.session_id = s.id`
+    }
+
+    sql += ` WHERE model IS NOT NULL`
+
+    if (options?.projectSlug) {
+      sql += ` AND s.project_slug = ?`
+      params.push(options.projectSlug)
+    }
+
+    if (options?.dateRange?.from) {
+      sql += ` AND m.timestamp >= ?`
+      params.push(options.dateRange.from)
+    }
+
+    if (options?.dateRange?.to) {
+      sql += ` AND m.timestamp <= ?`
+      params.push(options.dateRange.to)
+    }
+
+    sql += ` GROUP BY model ORDER BY total_tokens DESC LIMIT ?`
+    params.push(limit)
+
+    const rows = this.db.prepare(sql).all(...params) as Array<{
+      model: string
+      msg_count: number
+      total_tokens: number
+    }>
+
+    return rows.map(row => ({
+      label: row.model,
+      count: row.total_tokens,
+      details: `${row.msg_count} messages, ${row.total_tokens} tokens`,
     }))
   }
 

@@ -73,7 +73,8 @@ export function registerListSessions(server: McpServer): void {
       const sql = `
         SELECT id, source, project_slug, cwd, branch, started_at, ended_at,
                duration_minutes, total_turns, total_tokens, message_count,
-               error_count, topic, summary
+               error_count, topic, summary, custom_title, ai_title, tags,
+               cost_usd, mode, entrypoint, models_used
         FROM sessions
         ${whereClause}
         ORDER BY ${orderBy}
@@ -81,22 +82,31 @@ export function registerListSessions(server: McpServer): void {
 
       const rows = db.prepare(sql).all(...sqlParams) as Array<Record<string, unknown>>
 
-      const sessions = rows.map(row => ({
-        id: row.id as string,
-        source: row.source as string,
-        projectSlug: row.project_slug as string,
-        cwd: row.cwd as string,
-        branch: row.branch as string | null,
-        startedAt: row.started_at as string,
-        endedAt: row.ended_at as string | null,
-        durationMinutes: row.duration_minutes as number | null,
-        totalTurns: row.total_turns as number,
-        totalTokens: row.total_tokens as number,
-        messageCount: row.message_count as number | null,
-        errorCount: row.error_count as number | null,
-        topic: row.topic as string | null,
-        summary: row.summary as string | null,
-      }))
+      const sessions = rows.map(row => {
+        const title = (row.custom_title as string | null) ?? (row.ai_title as string | null)
+        return {
+          id: row.id as string,
+          source: row.source as string,
+          projectSlug: row.project_slug as string,
+          cwd: row.cwd as string,
+          branch: row.branch as string | null,
+          startedAt: row.started_at as string,
+          endedAt: row.ended_at as string | null,
+          durationMinutes: row.duration_minutes as number | null,
+          totalTurns: row.total_turns as number,
+          totalTokens: row.total_tokens as number,
+          messageCount: row.message_count as number | null,
+          errorCount: row.error_count as number | null,
+          topic: row.topic as string | null,
+          summary: row.summary as string | null,
+          title,
+          costUsd: row.cost_usd as number | null,
+          mode: row.mode as string | null,
+          entrypoint: row.entrypoint as string | null,
+          tags: row.tags ? JSON.parse(row.tags as string) as string[] : null,
+          modelsUsed: row.models_used ? JSON.parse(row.models_used as string) as string[] : null,
+        }
+      })
 
       const resolution = params.resolution ?? 'medium'
       const output = resolution === 'low'

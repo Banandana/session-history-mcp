@@ -45,6 +45,8 @@ function createMockRegistry(options: {
       for (const a of subagents) yield a
     },
     async *getMemory(): AsyncIterable<MemoryEntry> {},
+    async getSessionMetadata() { return undefined },
+    async getSessionCost() { return undefined },
     resolveProject(): ProjectMeta | undefined { return undefined },
     async checkFreshness(known: IndexState): Promise<FreshnessResult> {
       if (freshnessResult) return freshnessResult
@@ -80,6 +82,7 @@ function makeMessage(overrides: Partial<NormalizedMessage> & { id: string }): No
     model: 'claude-opus-4-6',
     isError: false,
     isCorrection: false,
+    hasThinking: false,
     uuid: overrides.id,
     ...overrides,
   }
@@ -403,6 +406,8 @@ describe('FreshnessGuard — generateSummaries', () => {
       async *getFileChanges() {},
       async *getSubagents() {},
       async *getMemory() {},
+      async getSessionMetadata() { return undefined },
+      async getSessionCost() { return undefined },
       resolveProject() { return undefined },
       async checkFreshness(known: IndexState): Promise<FreshnessResult> {
         const knownIds = known.sessionOffsets
@@ -496,7 +501,7 @@ describe('FreshnessGuard — FTS indexing efficiency', () => {
     expect(ftsResults.length).toBeGreaterThanOrEqual(1)
   })
 
-  it('does not create FTS entries for tool-only content with no text blocks', async () => {
+  it('indexes tool-only content with tool name summary for searchability', async () => {
     const messages: NormalizedMessage[] = [
       makeMessage({ id: 'msg-1', role: 'assistant', timestamp: NOW, contentBlocks: [{ type: 'tool_use', name: 'Bash', input: { command: 'ls' } }] }),
     ]
@@ -509,11 +514,9 @@ describe('FreshnessGuard — FTS indexing efficiency', () => {
     const guard = new FreshnessGuard(registry, indexManager, tempDir, db)
     await guard.ensureFresh()
 
-    // The extractContentPreview returns '' for tool-only blocks,
-    // but INSERT OR REPLACE with empty content may still create a row.
-    // Verify the message was indexed correctly in the messages table.
+    // Tool-only blocks now include tool name and key input params for searchability
     const msgRow = db.prepare('SELECT content_preview FROM messages WHERE id = ?').get('msg-1') as { content_preview: string }
-    expect(msgRow.content_preview).toBe('')
+    expect(msgRow.content_preview).toContain('Bash')
   })
 })
 
@@ -560,6 +563,8 @@ describe('FreshnessGuard — session discovery optimization', () => {
       async *getFileChanges() {},
       async *getSubagents() {},
       async *getMemory() {},
+      async getSessionMetadata() { return undefined },
+      async getSessionCost() { return undefined },
       resolveProject() { return undefined },
       async checkFreshness(known: IndexState): Promise<FreshnessResult> {
         const knownIds = known.sessionOffsets

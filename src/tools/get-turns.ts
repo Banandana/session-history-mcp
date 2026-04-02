@@ -95,9 +95,10 @@ export function truncateTurns(turns: readonly ExpandedTurn[], maxTokens: number)
 
 // --- Helper: convert NormalizedMessage to ExpandedTurn ---
 
-function messageToExpandedTurn(msg: NormalizedMessage, turnIndex: number): ExpandedTurn {
-  // Strip thinking blocks
-  const contentBlocks = msg.contentBlocks.filter(b => b.type !== 'thinking')
+function messageToExpandedTurn(msg: NormalizedMessage, turnIndex: number, includeThinking: boolean = false): ExpandedTurn {
+  const contentBlocks = includeThinking
+    ? [...msg.contentBlocks]
+    : msg.contentBlocks.filter(b => b.type !== 'thinking')
 
   return {
     turnIndex,
@@ -108,8 +109,16 @@ function messageToExpandedTurn(msg: NormalizedMessage, turnIndex: number): Expan
     toolNames: msg.toolNames ? [...msg.toolNames] : [],
     isError: msg.isError,
     isCorrection: msg.isCorrection,
+    hasThinking: msg.hasThinking,
+    model: msg.model,
     tokenUsage: msg.tokenUsage
       ? { input_tokens: msg.tokenUsage.input_tokens, output_tokens: msg.tokenUsage.output_tokens }
+      : undefined,
+    cacheTokens: msg.tokenUsage?.cache_creation_input_tokens || msg.tokenUsage?.cache_read_input_tokens
+      ? {
+          creation: msg.tokenUsage.cache_creation_input_tokens ?? 0,
+          read: msg.tokenUsage.cache_read_input_tokens ?? 0,
+        }
       : undefined,
   }
 }
@@ -132,6 +141,7 @@ export function registerGetTurns(server: McpServer): void {
         to: z.number().describe('End index (inclusive)'),
       }).optional().describe('Inclusive index range (max 50 turns)'),
       includeToolResults: z.boolean().optional().describe('Include tool_result blocks (default: true)'),
+      includeThinking: z.boolean().optional().describe('Include thinking/reasoning blocks (default: false)'),
       maxTokens: z.number().optional().describe('Token budget cap for response'),
     },
     async (params) => {
@@ -191,6 +201,7 @@ export function registerGetTurns(server: McpServer): void {
       const turnIdSet = hasTurnIds ? new Set(params.turnIds) : null
       const rangeFrom = hasTurnRange ? params.turnRange!.from : -1
       const rangeTo = hasTurnRange ? params.turnRange!.to : -1
+      const includeThinking = params.includeThinking === true
 
       const expandedTurns: ExpandedTurn[] = []
       let turnIndex = 0
@@ -201,7 +212,7 @@ export function registerGetTurns(server: McpServer): void {
           const matchByRange = hasTurnRange && turnIndex >= rangeFrom && turnIndex <= rangeTo
 
           if (matchById || matchByRange) {
-            let turn = messageToExpandedTurn(msg, turnIndex)
+            let turn = messageToExpandedTurn(msg, turnIndex, includeThinking)
 
             // Optionally strip tool results
             if (!includeToolResults) {

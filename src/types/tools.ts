@@ -1,7 +1,7 @@
 import type { DateRange, PaginationParams } from './common'
 import type { MessageRole } from './session'
 
-export type AnalyzeMetric = 'errors' | 'corrections' | 'tool_failures' | 'costly_sessions' | 'frequent_files'
+export type AnalyzeMetric = 'errors' | 'corrections' | 'tool_failures' | 'costly_sessions' | 'frequent_files' | 'cache_efficiency' | 'model_usage'
 export type ConversationWindow = 'start' | 'end' | 'errors' | 'corrections'
 
 export interface ProjectFilter {

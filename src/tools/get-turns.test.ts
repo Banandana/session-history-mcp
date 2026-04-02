@@ -39,7 +39,7 @@ describe('truncateTurns', () => {
       turnIndex: idx, turnId: `t${idx}`, role: 'assistant' as const,
       timestamp: '2026-01-01T00:00:00Z',
       contentBlocks: [{ type: 'text' as const, text: 'x'.repeat(1000) }],
-      toolNames: [] as string[], isError: false, isCorrection: false,
+      toolNames: [] as string[], isError: false, isCorrection: false, hasThinking: false,
     })
     const turns = Array.from({ length: 10 }, (_, i) => makeTurn(i))
     const result = truncateTurns(turns, 20)

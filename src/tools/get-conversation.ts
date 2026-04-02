@@ -24,6 +24,13 @@ interface SessionRow {
   readonly correction_count: number | null
   readonly tool_counts: string | null
   readonly files_changed: string | null
+  readonly custom_title: string | null
+  readonly ai_title: string | null
+  readonly cost_usd: number | null
+  readonly mode: string | null
+  readonly models_used: string | null
+  readonly total_cache_read_tokens: number | null
+  readonly total_cache_creation_tokens: number | null
 }
 
 export function registerGetConversation(server: McpServer): void {
@@ -47,7 +54,8 @@ export function registerGetConversation(server: McpServer): void {
       const session = db.prepare(
         `SELECT project_slug, topic, summary, started_at, ended_at, duration_minutes,
                 model, total_tokens, total_turns, error_count, correction_count,
-                tool_counts, files_changed
+                tool_counts, files_changed, custom_title, ai_title, cost_usd,
+                mode, models_used, total_cache_read_tokens, total_cache_creation_tokens
          FROM sessions WHERE id = ?`
       ).get(params.sessionId) as SessionRow | undefined
 
@@ -137,18 +145,26 @@ export function registerGetConversation(server: McpServer): void {
       const data = {
         sessionId: params.sessionId,
         metadata: {
+          title: session.custom_title ?? session.ai_title,
           topic: session.topic,
           summary: session.summary,
           startedAt: session.started_at,
           endedAt: session.ended_at,
           durationMinutes: session.duration_minutes,
           model: session.model,
+          modelsUsed: session.models_used ? JSON.parse(session.models_used) as string[] : null,
           totalTurns: session.total_turns ?? messages.length,
           totalTokens: session.total_tokens,
+          costUsd: session.cost_usd,
           errorCount: session.error_count ?? 0,
           correctionCount: session.correction_count ?? 0,
           toolBreakdown: toolCounts,
           filesChanged,
+          mode: session.mode,
+          cacheTokens: {
+            creation: session.total_cache_creation_tokens ?? 0,
+            read: session.total_cache_read_tokens ?? 0,
+          },
         },
         phases,
       }

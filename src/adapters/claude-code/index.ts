@@ -1,6 +1,7 @@
 import { join } from 'node:path'
 import type {
   SessionAdapter,
+  SessionMetadataResult,
   IndexState,
   FreshnessResult,
   ProjectMeta,
@@ -15,6 +16,7 @@ import { SessionDiscovery } from './session-discovery'
 import { ConversationParser } from './conversation-parser'
 import { SubagentParser } from './subagent-parser'
 import { FileChangeExtractor } from './file-change-extractor'
+import { MetadataParser } from './metadata-parser'
 import { MemoryReader } from './memory-reader'
 import { ConfigReader } from './config-reader'
 import { ToolResultResolver } from './tool-result-resolver'
@@ -23,6 +25,7 @@ export { SessionDiscovery } from './session-discovery'
 export { ConversationParser } from './conversation-parser'
 export { SubagentParser } from './subagent-parser'
 export { FileChangeExtractor } from './file-change-extractor'
+export { MetadataParser } from './metadata-parser'
 export { MemoryReader } from './memory-reader'
 export { ConfigReader } from './config-reader'
 export { ToolResultResolver } from './tool-result-resolver'
@@ -36,6 +39,7 @@ export class ClaudeCodeAdapter implements SessionAdapter {
   private readonly conversationParser: ConversationParser
   private readonly subagentParser: SubagentParser
   private readonly fileChangeExtractor: FileChangeExtractor
+  private readonly metadataParser: MetadataParser
   private readonly memoryReader: MemoryReader
   readonly configReader: ConfigReader
   readonly toolResultResolver: ToolResultResolver
@@ -45,6 +49,7 @@ export class ClaudeCodeAdapter implements SessionAdapter {
     this.conversationParser = new ConversationParser()
     this.subagentParser = new SubagentParser(claudeDir)
     this.fileChangeExtractor = new FileChangeExtractor()
+    this.metadataParser = new MetadataParser()
     this.memoryReader = new MemoryReader(claudeDir)
     this.configReader = new ConfigReader(claudeDir)
     this.toolResultResolver = new ToolResultResolver(claudeDir)
@@ -79,6 +84,16 @@ export class ClaudeCodeAdapter implements SessionAdapter {
 
   async *getMemory(project?: string): AsyncIterable<MemoryEntry> {
     yield* this.memoryReader.readMemory(project)
+  }
+
+  async getSessionMetadata(sessionId: string): Promise<SessionMetadataResult | undefined> {
+    const sessionPath = await this.findSessionPath(sessionId)
+    if (!sessionPath) return undefined
+    return this.metadataParser.extractMetadata(sessionPath)
+  }
+
+  async getSessionCost(projectSlug: string, sessionId: string): Promise<number | undefined> {
+    return this.configReader.getSessionCost(projectSlug, sessionId)
   }
 
   resolveProject(path: string): ProjectMeta | undefined {

@@ -45,7 +45,10 @@ export function registerGetSession(server: McpServer): void {
         `SELECT id, source, project_slug, cwd, branch, started_at, ended_at,
                 model, total_tokens, total_turns, message_count,
                 duration_minutes, error_count, correction_count, subagent_count,
-                tool_counts, files_changed, topic, summary, summary_generated_at
+                tool_counts, files_changed, topic, summary, summary_generated_at,
+                custom_title, ai_title, tags, cost_usd, mode, entrypoint,
+                has_thinking, worktree_branch, speculation_time_saved_ms,
+                total_cache_read_tokens, total_cache_creation_tokens, models_used
          FROM sessions WHERE id = ?`
       ).get(params.sessionId) as {
         id: string
@@ -68,6 +71,18 @@ export function registerGetSession(server: McpServer): void {
         topic: string | null
         summary: string | null
         summary_generated_at: string | null
+        custom_title: string | null
+        ai_title: string | null
+        tags: string | null
+        cost_usd: number | null
+        mode: string | null
+        entrypoint: string | null
+        has_thinking: number | null
+        worktree_branch: string | null
+        speculation_time_saved_ms: number | null
+        total_cache_read_tokens: number | null
+        total_cache_creation_tokens: number | null
+        models_used: string | null
       } | undefined
 
       if (!session) {
@@ -79,6 +94,7 @@ export function registerGetSession(server: McpServer): void {
       const detail = params.detail ?? 'summary'
 
       // summary (default) — compact card matching list_sessions fields
+      const title = session.custom_title ?? session.ai_title
       const result: Record<string, unknown> = {
         id: session.id,
         source: session.source,
@@ -93,6 +109,12 @@ export function registerGetSession(server: McpServer): void {
         errorCount: session.error_count,
         topic: session.topic,
         summary: session.summary,
+        title,
+        costUsd: session.cost_usd,
+        mode: session.mode,
+        entrypoint: session.entrypoint,
+        tags: session.tags ? JSON.parse(session.tags) as unknown : null,
+        modelsUsed: session.models_used ? JSON.parse(session.models_used) as unknown : null,
       }
 
       if (detail === 'metadata' || detail === 'full') {
@@ -101,6 +123,37 @@ export function registerGetSession(server: McpServer): void {
         result.subagentCount = session.subagent_count
         result.toolCounts = session.tool_counts ? JSON.parse(session.tool_counts) as unknown : null
         result.filesChanged = session.files_changed ? JSON.parse(session.files_changed) as unknown : null
+        result.hasThinking = session.has_thinking === 1
+        result.worktreeBranch = session.worktree_branch
+        result.speculationTimeSavedMs = session.speculation_time_saved_ms
+        result.cacheTokens = {
+          creation: session.total_cache_creation_tokens ?? 0,
+          read: session.total_cache_read_tokens ?? 0,
+        }
+
+        // PR links
+        const prLinks = db.prepare(
+          'SELECT pr_number, pr_url, pr_repository, timestamp FROM pr_links WHERE session_id = ?'
+        ).all(params.sessionId) as Array<{
+          pr_number: number
+          pr_url: string
+          pr_repository: string
+          timestamp: string | null
+        }>
+        if (prLinks.length > 0) {
+          result.prLinks = prLinks.map(pr => ({
+            prNumber: pr.pr_number,
+            prUrl: pr.pr_url,
+            prRepository: pr.pr_repository,
+            timestamp: pr.timestamp,
+          }))
+        }
+
+        // Context collapses count
+        const collapseCount = db.prepare(
+          'SELECT COUNT(*) as cnt FROM context_collapses WHERE session_id = ?'
+        ).get(params.sessionId) as { cnt: number }
+        result.contextCollapseCount = collapseCount.cnt
 
         // Subagents from subagents table
         const subagents = db.prepare(

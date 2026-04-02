@@ -30,5 +30,11 @@ export interface ExpandedTurn {
   readonly toolNames: readonly string[]
   readonly isError: boolean
   readonly isCorrection: boolean
+  readonly hasThinking: boolean
+  readonly model?: string
   readonly tokenUsage?: TokenUsage
+  readonly cacheTokens?: {
+    readonly creation: number
+    readonly read: number
+  }
 }

@@ -9,6 +9,9 @@ interface RawJsonlLine {
   type?: string
   uuid?: string
   parentUuid?: string | null
+  cwd?: string
+  gitBranch?: string
+  entrypoint?: string
   message?: {
     id?: string
     role?: string
@@ -40,6 +43,10 @@ interface PendingAssistant {
   tokenUsage: TokenUsage
   stopReason: string | null
   toolNames: string[]
+  hasThinking: boolean
+  cwd?: string
+  gitBranch?: string
+  entrypoint?: string
 }
 
 function extractSessionId(sessionPath: string): string {
@@ -175,9 +182,13 @@ function finalizePending(pending: PendingAssistant): NormalizedMessage {
     toolNames,
     isError: false,
     isCorrection: false,
+    hasThinking: pending.hasThinking,
     requestId: pending.requestId,
     parentUuid: pending.parentUuid,
     uuid: pending.firstUuid,
+    cwd: pending.cwd,
+    gitBranch: pending.gitBranch,
+    entrypoint: pending.entrypoint,
   }
 }
 
@@ -238,9 +249,13 @@ export class ConversationParser {
           contentBlocks: blocks,
           isError,
           isCorrection: isToolResult ? false : detectCorrection(blocks),
+          hasThinking: false,
           toolNames: resolvedToolNames.length > 0 ? resolvedToolNames : undefined,
           parentUuid: parsed.parentUuid ?? null,
           uuid: parsed.uuid ?? `user-${Date.now()}`,
+          cwd: parsed.cwd,
+          gitBranch: parsed.gitBranch,
+          entrypoint: parsed.entrypoint,
         }
         continue
       }
@@ -255,12 +270,15 @@ export class ConversationParser {
           .filter(b => b.type === 'tool_use' && b.name)
           .map(b => b.name!)
 
+        const chunkHasThinking = chunkBlocks.some(b => b.type === 'thinking')
+
         if (pending && pending.requestId === requestId) {
           // Same assistant turn — append blocks
           pending.contentBlocks.push(...chunkBlocks)
           pending.toolNames.push(...chunkToolNames)
           pending.tokenUsage = mergeTokenUsage(pending.tokenUsage, parsed.message)
           pending.stopReason = parsed.message?.stop_reason ?? pending.stopReason
+          if (chunkHasThinking) pending.hasThinking = true
         } else {
           // Different requestId — flush previous
           if (pending) {
@@ -288,6 +306,10 @@ export class ConversationParser {
             },
             stopReason: parsed.message?.stop_reason ?? null,
             toolNames: chunkToolNames,
+            hasThinking: chunkHasThinking,
+            cwd: parsed.cwd,
+            gitBranch: parsed.gitBranch,
+            entrypoint: parsed.entrypoint,
           }
         }
         continue

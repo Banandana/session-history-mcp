@@ -11,6 +11,7 @@ function makeMessage(overrides: Partial<NormalizedMessage> & { id: string }): No
     contentBlocks: overrides.contentBlocks ?? [{ type: 'text', text: 'hello' }],
     isError: overrides.isError ?? false,
     isCorrection: overrides.isCorrection ?? false,
+    hasThinking: false,
     uuid: overrides.id,
     toolNames: overrides.toolNames,
   }

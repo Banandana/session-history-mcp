@@ -119,6 +119,11 @@ export class IndexManager {
         this.migrateToV2()
       })()
     }
+    if (userVersion < 3) {
+      this.db.transaction(() => {
+        this.migrateToV3()
+      })()
+    }
   }
 
   private migrateToV2(): void {
@@ -188,6 +193,58 @@ export class IndexManager {
     `)
 
     this.db.pragma('user_version = 1')
+  }
+
+  private migrateToV3(): void {
+    // Session-level metadata from JSONL metadata entries
+    this.addColumnIfMissing('sessions', 'custom_title', 'TEXT')
+    this.addColumnIfMissing('sessions', 'ai_title', 'TEXT')
+    this.addColumnIfMissing('sessions', 'tags', 'TEXT')             // JSON array
+    this.addColumnIfMissing('sessions', 'cost_usd', 'REAL')
+    this.addColumnIfMissing('sessions', 'mode', 'TEXT')             // 'coordinator' | 'normal'
+    this.addColumnIfMissing('sessions', 'entrypoint', 'TEXT')       // 'cli' | 'sdk-ts' | etc.
+    this.addColumnIfMissing('sessions', 'has_thinking', 'INTEGER DEFAULT 0')
+    this.addColumnIfMissing('sessions', 'worktree_branch', 'TEXT')
+    this.addColumnIfMissing('sessions', 'speculation_time_saved_ms', 'INTEGER DEFAULT 0')
+    this.addColumnIfMissing('sessions', 'total_cache_read_tokens', 'INTEGER DEFAULT 0')
+    this.addColumnIfMissing('sessions', 'total_cache_creation_tokens', 'INTEGER DEFAULT 0')
+    this.addColumnIfMissing('sessions', 'models_used', 'TEXT')      // JSON array of distinct models
+
+    // Per-message cache token tracking
+    this.addColumnIfMissing('messages', 'cache_creation_tokens', 'INTEGER DEFAULT 0')
+    this.addColumnIfMissing('messages', 'cache_read_tokens', 'INTEGER DEFAULT 0')
+    this.addColumnIfMissing('messages', 'has_thinking', 'INTEGER DEFAULT 0')
+
+    // PR links table
+    this.db.exec(`
+      CREATE TABLE IF NOT EXISTS pr_links (
+        id INTEGER PRIMARY KEY AUTOINCREMENT,
+        session_id TEXT NOT NULL REFERENCES sessions(id) ON DELETE CASCADE,
+        pr_number INTEGER NOT NULL,
+        pr_url TEXT NOT NULL,
+        pr_repository TEXT NOT NULL,
+        timestamp TEXT
+      );
+
+      CREATE INDEX IF NOT EXISTS idx_pr_links_session_id ON pr_links(session_id);
+      CREATE INDEX IF NOT EXISTS idx_pr_links_repository ON pr_links(pr_repository);
+    `)
+
+    // Context collapses table
+    this.db.exec(`
+      CREATE TABLE IF NOT EXISTS context_collapses (
+        id INTEGER PRIMARY KEY AUTOINCREMENT,
+        session_id TEXT NOT NULL REFERENCES sessions(id) ON DELETE CASCADE,
+        collapse_id TEXT NOT NULL,
+        summary TEXT,
+        first_archived_uuid TEXT,
+        last_archived_uuid TEXT
+      );
+
+      CREATE INDEX IF NOT EXISTS idx_context_collapses_session_id ON context_collapses(session_id);
+    `)
+
+    this.db.pragma('user_version = 3')
   }
 
   getSessionOffset(sessionId: string): number {

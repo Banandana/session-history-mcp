@@ -1,5 +1,6 @@
 import type {
   SessionAdapter,
+  SessionMetadataResult,
   IndexState,
   FreshnessResult,
   ProjectMeta,
@@ -55,6 +56,22 @@ export class AdapterRegistry {
     for (const adapter of this.adapters) {
       yield* adapter.getMemory(project)
     }
+  }
+
+  async getSessionMetadata(sessionId: string): Promise<SessionMetadataResult | undefined> {
+    for (const adapter of this.adapters) {
+      const result = await adapter.getSessionMetadata(sessionId)
+      if (result) return result
+    }
+    return undefined
+  }
+
+  async getSessionCost(projectSlug: string, sessionId: string): Promise<number | undefined> {
+    for (const adapter of this.adapters) {
+      const result = await adapter.getSessionCost(projectSlug, sessionId)
+      if (result !== undefined) return result
+    }
+    return undefined
   }
 
   resolveProject(path: string): ProjectMeta | undefined {

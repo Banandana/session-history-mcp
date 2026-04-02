@@ -137,8 +137,8 @@ export class FreshnessGuard {
     `)
 
     const insertMessage = this.db.prepare(`
-      INSERT OR REPLACE INTO messages (id, session_id, role, type, timestamp, model, token_count, has_tool_use, tool_names, is_error, is_correction, content_preview)
-      VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+      INSERT OR REPLACE INTO messages (id, session_id, role, type, timestamp, model, token_count, has_tool_use, tool_names, is_error, is_correction, content_preview, cache_creation_tokens, cache_read_tokens, has_thinking)
+      VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
     `)
 
     const insertFts = this.db.prepare(`
@@ -165,7 +165,6 @@ export class FreshnessGuard {
       )
 
       // Parse and index messages
-      let byteOffset = 0
       const messages: NormalizedMessage[] = []
       for await (const msg of this.registry.getMessages(sessionId)) {
         messages.push(msg)
@@ -183,7 +182,7 @@ export class FreshnessGuard {
           msg.id,
           sessionId,
           msg.role,
-          msg.role, // type same as role for simplicity
+          msg.role,
           msg.timestamp,
           msg.model ?? null,
           tokenCount,
@@ -192,6 +191,9 @@ export class FreshnessGuard {
           msg.isError ? 1 : 0,
           msg.isCorrection ? 1 : 0,
           contentPreview,
+          msg.tokenUsage?.cache_creation_input_tokens ?? 0,
+          msg.tokenUsage?.cache_read_input_tokens ?? 0,
+          msg.hasThinking ? 1 : 0,
         )
 
         // Insert into FTS using the rowid returned by the INSERT
@@ -242,8 +244,9 @@ export class FreshnessGuard {
         )
       }
 
-      // Compute and store session metrics
-      this.computeSessionMetrics(sessionId)
+      // Compute and store session metrics + metadata
+      this.computeSessionMetrics(sessionId, messages)
+      await this.syncSessionMetadata(sessionId, meta?.projectSlug)
     }
 
     // Update offsets with real file sizes
@@ -252,8 +255,8 @@ export class FreshnessGuard {
 
   private async syncChangedSessions(sessionIds: readonly string[]): Promise<void> {
     const insertMessage = this.db.prepare(`
-      INSERT OR REPLACE INTO messages (id, session_id, role, type, timestamp, model, token_count, has_tool_use, tool_names, is_error, is_correction, content_preview)
-      VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+      INSERT OR REPLACE INTO messages (id, session_id, role, type, timestamp, model, token_count, has_tool_use, tool_names, is_error, is_correction, content_preview, cache_creation_tokens, cache_read_tokens, has_thinking)
+      VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
     `)
 
     const insertFts = this.db.prepare(`
@@ -261,8 +264,6 @@ export class FreshnessGuard {
     `)
 
     for (const sessionId of sessionIds) {
-      // Get messages (the adapter returns all messages; for changed sessions
-      // we re-index all messages, using INSERT OR REPLACE to handle duplicates)
       const messages: NormalizedMessage[] = []
       for await (const msg of this.registry.getMessages(sessionId)) {
         messages.push(msg)
@@ -289,6 +290,9 @@ export class FreshnessGuard {
           msg.isError ? 1 : 0,
           msg.isCorrection ? 1 : 0,
           contentPreview,
+          msg.tokenUsage?.cache_creation_input_tokens ?? 0,
+          msg.tokenUsage?.cache_read_input_tokens ?? 0,
+          msg.hasThinking ? 1 : 0,
         )
 
         if (contentPreview) {
@@ -343,8 +347,10 @@ export class FreshnessGuard {
         )
       }
 
-      // Compute and store session metrics
-      this.computeSessionMetrics(sessionId)
+      // Compute and store session metrics + metadata
+      this.computeSessionMetrics(sessionId, messages)
+      const projectSlug = this.db.prepare('SELECT project_slug FROM sessions WHERE id = ?').get(sessionId) as { project_slug: string | null } | undefined
+      await this.syncSessionMetadata(sessionId, projectSlug?.project_slug ?? undefined)
 
       // Index turn events for structured queries
       this.turnIndexer?.indexSession(sessionId, messages)
@@ -358,6 +364,9 @@ export class FreshnessGuard {
     const deleteSession = this.db.prepare('DELETE FROM sessions WHERE id = ?')
     const deleteFileChanges = this.db.prepare('DELETE FROM file_changes WHERE session_id = ?')
     const deleteSubagents = this.db.prepare('DELETE FROM subagents WHERE session_id = ?')
+    const deletePrLinks = this.db.prepare('DELETE FROM pr_links WHERE session_id = ?')
+    const deleteCollapses = this.db.prepare('DELETE FROM context_collapses WHERE session_id = ?')
+    const deleteTurnEvents = this.db.prepare('DELETE FROM turn_events WHERE session_id = ?')
 
     for (const sessionId of sessionIds) {
       // Delete FTS entries for messages in this session
@@ -371,11 +380,14 @@ export class FreshnessGuard {
       deleteMessages.run(sessionId)
       deleteFileChanges.run(sessionId)
       deleteSubagents.run(sessionId)
+      deletePrLinks.run(sessionId)
+      deleteCollapses.run(sessionId)
+      deleteTurnEvents.run(sessionId)
       deleteSession.run(sessionId)
     }
   }
 
-  private computeSessionMetrics(sessionId: string): void {
+  private computeSessionMetrics(sessionId: string, messages?: readonly NormalizedMessage[]): void {
     // Get started_at from session row
     const sessionRow = this.db.prepare(
       'SELECT started_at FROM sessions WHERE id = ?'
@@ -388,13 +400,19 @@ export class FreshnessGuard {
         COUNT(*) as message_count,
         MAX(timestamp) as max_timestamp,
         SUM(CASE WHEN is_error = 1 THEN 1 ELSE 0 END) as error_count,
-        SUM(CASE WHEN is_correction = 1 THEN 1 ELSE 0 END) as correction_count
+        SUM(CASE WHEN is_correction = 1 THEN 1 ELSE 0 END) as correction_count,
+        SUM(cache_creation_tokens) as total_cache_creation,
+        SUM(cache_read_tokens) as total_cache_read,
+        MAX(has_thinking) as any_thinking
       FROM messages WHERE session_id = ?
     `).get(sessionId) as {
       message_count: number
       max_timestamp: string | null
       error_count: number
       correction_count: number
+      total_cache_creation: number | null
+      total_cache_read: number | null
+      any_thinking: number | null
     }
 
     const messageCount = msgStats.message_count
@@ -408,7 +426,7 @@ export class FreshnessGuard {
       'SELECT COUNT(*) as cnt FROM subagents WHERE session_id = ?'
     ).get(sessionId) as { cnt: number }
 
-    // Tool counts — aggregate from messages.tool_names (comma-separated)
+    // Tool counts
     const toolRows = this.db.prepare(
       'SELECT tool_names FROM messages WHERE session_id = ? AND tool_names IS NOT NULL AND tool_names != \'\''
     ).all(sessionId) as { tool_names: string }[]
@@ -423,15 +441,14 @@ export class FreshnessGuard {
       }
     }
 
-    // Files changed — distinct (file_path, operation)
+    // Files changed
     const fcRows = this.db.prepare(
       'SELECT DISTINCT file_path, operation FROM file_changes WHERE session_id = ?'
     ).all(sessionId) as { file_path: string; operation: string }[]
 
     const filesChanged = fcRows.map(r => ({ path: r.file_path, op: r.operation }))
 
-    // First several user messages for topic generation — topic generator
-    // skips non-intent messages (slash commands, system injections)
+    // Topic generation
     const userMsgRows = this.db.prepare(
       "SELECT content_preview FROM messages WHERE session_id = ? AND role = 'user' AND content_preview != '' AND has_tool_use = 0 ORDER BY timestamp ASC LIMIT 5"
     ).all(sessionId) as Array<{ content_preview: string | null }>
@@ -446,6 +463,21 @@ export class FreshnessGuard {
       errorCount: msgStats.error_count,
     })
 
+    // Distinct models used — from messages or from in-memory list
+    const modelsUsed = messages
+      ? [...new Set(messages.filter(m => m.model).map(m => m.model!))]
+      : (() => {
+          const rows = this.db.prepare(
+            "SELECT DISTINCT model FROM messages WHERE session_id = ? AND model IS NOT NULL"
+          ).all(sessionId) as { model: string }[]
+          return rows.map(r => r.model)
+        })()
+
+    // Entrypoint — from first message that has one
+    const entrypoint = messages
+      ? messages.find(m => m.entrypoint)?.entrypoint
+      : undefined
+
     // Update session row
     this.db.prepare(`
       UPDATE sessions SET
@@ -457,7 +489,12 @@ export class FreshnessGuard {
         subagent_count = ?,
         tool_counts = ?,
         files_changed = ?,
-        topic = ?
+        topic = ?,
+        total_cache_creation_tokens = ?,
+        total_cache_read_tokens = ?,
+        has_thinking = ?,
+        models_used = ?,
+        entrypoint = COALESCE(?, entrypoint)
       WHERE id = ?
     `).run(
       endedAt,
@@ -469,17 +506,114 @@ export class FreshnessGuard {
       JSON.stringify(toolCounts),
       JSON.stringify(filesChanged),
       topic,
+      msgStats.total_cache_creation ?? 0,
+      msgStats.total_cache_read ?? 0,
+      msgStats.any_thinking ?? 0,
+      JSON.stringify(modelsUsed),
+      entrypoint ?? null,
       sessionId,
     )
   }
 
-  private extractContentPreview(msg: NormalizedMessage): string {
-    for (const block of msg.contentBlocks) {
-      if (block.type === 'text' && block.text) {
-        return block.text.slice(0, 200)
+  /**
+   * Syncs session-level metadata (titles, tags, PR links, mode, worktree, etc.)
+   * from JSONL metadata entries that the conversation parser skips.
+   */
+  private async syncSessionMetadata(sessionId: string, projectSlug?: string | null): Promise<void> {
+    const metadata = await this.registry.getSessionMetadata(sessionId)
+    if (!metadata) return
+
+    // Update session columns
+    this.db.prepare(`
+      UPDATE sessions SET
+        custom_title = COALESCE(?, custom_title),
+        ai_title = COALESCE(?, ai_title),
+        tags = ?,
+        mode = COALESCE(?, mode),
+        worktree_branch = COALESCE(?, worktree_branch),
+        speculation_time_saved_ms = ?
+      WHERE id = ?
+    `).run(
+      metadata.customTitle ?? null,
+      metadata.aiTitle ?? null,
+      metadata.tags.length > 0 ? JSON.stringify(metadata.tags) : null,
+      metadata.mode ?? null,
+      metadata.worktreeBranch ?? null,
+      metadata.speculationTimeSavedMs,
+      sessionId,
+    )
+
+    // Sync PR links
+    if (metadata.prLinks.length > 0) {
+      this.db.prepare('DELETE FROM pr_links WHERE session_id = ?').run(sessionId)
+      const insertPr = this.db.prepare(`
+        INSERT INTO pr_links (session_id, pr_number, pr_url, pr_repository, timestamp)
+        VALUES (?, ?, ?, ?, ?)
+      `)
+      for (const pr of metadata.prLinks) {
+        insertPr.run(sessionId, pr.prNumber, pr.prUrl, pr.prRepository, pr.timestamp)
       }
     }
-    return ''
+
+    // Sync context collapses
+    if (metadata.collapses.length > 0) {
+      this.db.prepare('DELETE FROM context_collapses WHERE session_id = ?').run(sessionId)
+      const insertCollapse = this.db.prepare(`
+        INSERT INTO context_collapses (session_id, collapse_id, summary, first_archived_uuid, last_archived_uuid)
+        VALUES (?, ?, ?, ?, ?)
+      `)
+      for (const c of metadata.collapses) {
+        insertCollapse.run(sessionId, c.collapseId, c.summary, c.firstArchivedUuid, c.lastArchivedUuid)
+      }
+    }
+
+    // Try to get cost data
+    if (projectSlug) {
+      const cost = await this.registry.getSessionCost(projectSlug, sessionId)
+      if (cost !== undefined) {
+        this.db.prepare('UPDATE sessions SET cost_usd = ? WHERE id = ?').run(cost, sessionId)
+      }
+    }
+  }
+
+  private extractContentPreview(msg: NormalizedMessage): string {
+    const parts: string[] = []
+    let budget = 500 // Increased from 200 to capture more searchable content
+
+    for (const block of msg.contentBlocks) {
+      if (budget <= 0) break
+
+      if (block.type === 'text' && block.text) {
+        const chunk = block.text.slice(0, budget)
+        parts.push(chunk)
+        budget -= chunk.length
+      } else if (block.type === 'tool_use' && block.name) {
+        // Include tool name and key input params for searchability
+        const toolInfo = block.input && typeof block.input === 'object'
+          ? `[${block.name}: ${this.extractToolInputSummary(block.input, 100)}]`
+          : `[${block.name}]`
+        parts.push(toolInfo)
+        budget -= toolInfo.length
+      } else if (block.type === 'tool_result' && block.content) {
+        // Include error content from tool results for searchability
+        const content = typeof block.content === 'string' ? block.content : JSON.stringify(block.content)
+        if (content.length > 0) {
+          const chunk = content.slice(0, Math.min(budget, 150))
+          parts.push(chunk)
+          budget -= chunk.length
+        }
+      }
+    }
+    return parts.join(' ').slice(0, 500)
+  }
+
+  private extractToolInputSummary(input: unknown, maxLen: number): string {
+    if (!input || typeof input !== 'object') return ''
+    const obj = input as Record<string, unknown>
+    // Extract key searchable fields from common tools
+    const interesting = obj.file_path ?? obj.command ?? obj.pattern ?? obj.query ?? obj.prompt
+    if (typeof interesting === 'string') return interesting.slice(0, maxLen)
+    return JSON.stringify(obj).slice(0, maxLen)
   }
 
   private async updateFileOffsets(sessionIds: readonly string[]): Promise<void> {

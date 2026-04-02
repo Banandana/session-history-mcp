@@ -182,10 +182,10 @@ describe('IndexManager', () => {
       expect(columns).toContain('summary_generated_at')
     })
 
-    it('sets user_version to 2 (latest)', () => {
+    it('sets user_version to 3 (latest)', () => {
       manager.ensureSchema()
       const version = db.pragma('user_version', { simple: true }) as number
-      expect(version).toBe(2)
+      expect(version).toBe(3)
     })
 
     it('creates new sort indexes', () => {
@@ -269,7 +269,7 @@ describe('IndexManager', () => {
       manager.ensureSchema()
 
       const version = db.pragma('user_version', { simple: true }) as number
-      expect(version).toBe(2)
+      expect(version).toBe(3)
     })
 
     it('creates turn_events indexes', () => {
@@ -350,14 +350,14 @@ describe('IndexManager', () => {
       expect(tableExists(db, 'summaries')).toBe(false)
     })
 
-    it('sets user_version to 2 (all migrations applied)', () => {
+    it('sets user_version to 3 (all migrations applied)', () => {
       const vBefore = db.pragma('user_version', { simple: true }) as number
       expect(vBefore).toBe(0)
 
       manager.ensureSchema()
 
       const vAfter = db.pragma('user_version', { simple: true }) as number
-      expect(vAfter).toBe(2)
+      expect(vAfter).toBe(3)
     })
 
     it('creates new sort indexes', () => {

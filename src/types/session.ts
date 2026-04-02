@@ -31,9 +31,13 @@ export interface NormalizedMessage {
   readonly toolNames?: readonly string[]
   readonly isError: boolean
   readonly isCorrection: boolean
+  readonly hasThinking: boolean
   readonly requestId?: string
   readonly parentUuid?: string | null
   readonly uuid: string
+  readonly cwd?: string
+  readonly gitBranch?: string
+  readonly entrypoint?: string
 }
 
 export interface SessionMeta {
@@ -59,6 +63,35 @@ export interface SessionMeta {
   readonly summaryGeneratedAt?: string
   readonly summaryText?: string
   readonly version?: string
+  readonly customTitle?: string
+  readonly aiTitle?: string
+  readonly tags?: readonly string[]
+  readonly costUsd?: number
+  readonly mode?: 'coordinator' | 'normal'
+  readonly entrypoint?: string
+}
+
+export interface SessionMetadataEntry {
+  readonly type: string
+  readonly sessionId: string
+  readonly timestamp?: string
+  readonly data: Record<string, unknown>
+}
+
+export interface PrLink {
+  readonly sessionId: string
+  readonly prNumber: number
+  readonly prUrl: string
+  readonly prRepository: string
+  readonly timestamp: string
+}
+
+export interface ContextCollapse {
+  readonly sessionId: string
+  readonly collapseId: string
+  readonly summary: string
+  readonly firstArchivedUuid: string
+  readonly lastArchivedUuid: string
 }
 
 export interface SubagentMeta {

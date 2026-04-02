@@ -12,7 +12,7 @@ export function registerAnalyze(server: McpServer): void {
     'analyze',
     'Aggregation and pattern discovery across sessions. Analyze errors, corrections, tool failures, costly sessions, or frequently changed files.',
     {
-      metric: z.enum(['errors', 'corrections', 'tool_failures', 'costly_sessions', 'frequent_files']).describe('What to analyze'),
+      metric: z.enum(['errors', 'corrections', 'tool_failures', 'costly_sessions', 'frequent_files', 'cache_efficiency', 'model_usage']).describe('What to analyze'),
       project: z.string().optional().describe('Filter by project slug'),
       path: z.string().optional().describe('Resolve project from filesystem path'),
       from: z.string().optional().describe('Start date ISO 8601'),
