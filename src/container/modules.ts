@@ -15,6 +15,7 @@ import { ProjectResolver } from '../services/project-resolver'
 import { Analyzer } from '../services/analyzer'
 import { ResponseFormatter } from '../services/response-formatter'
 import { TurnIndexer } from '../services/turn-indexer'
+import { PhaseClusterer } from '../services/phase-clusterer'
 import { homedir } from 'node:os'
 import { join } from 'node:path'
 
@@ -68,6 +69,9 @@ export function registerInfrastructure(): void {
 
   const responseFormatter = new ResponseFormatter()
   container.register(TOKENS.ResponseFormatter, { useValue: responseFormatter })
+
+  const phaseClusterer = new PhaseClusterer()
+  container.register(TOKENS.PhaseClusterer, { useValue: phaseClusterer })
 }
 
 export function registerAll(): void {

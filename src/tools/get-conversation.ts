@@ -4,43 +4,52 @@ import { z } from 'zod'
 import { join } from 'node:path'
 import { TOKENS } from '../container/tokens'
 import type { FreshnessGuard } from '../services/freshness-guard'
-import type { TokenBudgetManager } from '../services/token-budget-manager'
-import type { PaginationManager } from '../services/pagination-manager'
 import type { ResponseFormatter } from '../services/response-formatter'
 import type { DatabaseConnection } from '../infrastructure/database'
-import type { NormalizedMessage, ContentBlock } from '../types'
+import type { PhaseClusterer, Phase } from '../services/phase-clusterer'
+import type { NormalizedMessage } from '../types'
 import { ConversationParser } from '../adapters/claude-code/conversation-parser'
-import { distillConversation } from '../services/conversation-distiller'
+
+interface SessionRow {
+  readonly project_slug: string | null
+  readonly topic: string | null
+  readonly summary: string | null
+  readonly started_at: string | null
+  readonly ended_at: string | null
+  readonly duration_minutes: number | null
+  readonly model: string | null
+  readonly total_tokens: number | null
+  readonly total_turns: number | null
+  readonly error_count: number | null
+  readonly correction_count: number | null
+  readonly tool_counts: string | null
+  readonly files_changed: string | null
+}
 
 export function registerGetConversation(server: McpServer): void {
   server.tool(
     'get_conversation',
-    'Get conversation content for a session with token budgeting, role filtering, and windowed views (start, end, errors, corrections).',
+    'Get a phase-clustered overview of a session — metadata, tool breakdown, files changed, and activity phases.',
     {
       sessionId: z.string().describe('Session ID'),
-      maxTokens: z.number().optional().describe('Token budget for response'),
-      roles: z.array(z.enum(['user', 'assistant', 'system'])).optional().describe('Filter by role'),
-      includeToolResults: z.boolean().optional().describe('Include tool result content'),
-      window: z.enum(['start', 'end', 'errors', 'corrections']).optional().describe('Which part of conversation to return'),
-      cursor: z.string().optional().describe('Pagination cursor'),
-      limit: z.number().optional().describe('Maximum messages to return'),
-      focus: z.enum(['general', 'tools', 'errors', 'files', 'decisions']).optional().describe('Distillation lens — adds distilled view alongside raw messages (ignored when includeToolResults=true)'),
+      maxTokens: z.number().optional().describe('Token budget for response — truncates phases and lists to fit'),
     },
     async (params) => {
       const freshnessGuard = container.resolve<FreshnessGuard>(TOKENS.FreshnessGuard)
-      const tokenBudget = container.resolve<TokenBudgetManager>(TOKENS.TokenBudgetManager)
-      const pagination = container.resolve<PaginationManager>(TOKENS.PaginationManager)
       const formatter = container.resolve<ResponseFormatter>(TOKENS.ResponseFormatter)
       const dbConn = container.resolve<DatabaseConnection>(TOKENS.Database)
+      const phaseClusterer = container.resolve<PhaseClusterer>(TOKENS.PhaseClusterer)
       const db = dbConn.get()
       const claudeDir = container.resolve<string>(TOKENS.ClaudeDataDir)
 
       const freshness = await freshnessGuard.ensureFresh()
 
-      // Find session to get project_slug
       const session = db.prepare(
-        'SELECT project_slug FROM sessions WHERE id = ?'
-      ).get(params.sessionId) as { project_slug: string | null } | undefined
+        `SELECT project_slug, topic, summary, started_at, ended_at, duration_minutes,
+                model, total_tokens, total_turns, error_count, correction_count,
+                tool_counts, files_changed
+         FROM sessions WHERE id = ?`
+      ).get(params.sessionId) as SessionRow | undefined
 
       if (!session) {
         return {
@@ -48,13 +57,12 @@ export function registerGetConversation(server: McpServer): void {
         }
       }
 
-      // Construct JSONL path
+      // Construct JSONL path and parse messages
       const projectSlug = session.project_slug ?? 'unknown'
       const sessionPath = join(claudeDir, 'projects', projectSlug, `${params.sessionId}.jsonl`)
 
-      // Parse messages from JSONL
       const parser = new ConversationParser()
-      let messages: NormalizedMessage[] = []
+      const messages: NormalizedMessage[] = []
       try {
         for await (const msg of parser.parseSession(sessionPath)) {
           messages.push(msg)
@@ -65,70 +73,88 @@ export function registerGetConversation(server: McpServer): void {
         }
       }
 
-      // Filter by roles
-      if (params.roles && params.roles.length > 0) {
-        const roleSet = new Set(params.roles)
-        messages = messages.filter(m => roleSet.has(m.role))
+      // Cluster into phases
+      let phases: Phase[] = [...phaseClusterer.cluster(messages)]
+
+      // Parse tool_counts and files_changed from JSON strings
+      let toolCounts: Record<string, number> = {}
+      if (session.tool_counts) {
+        try {
+          toolCounts = JSON.parse(session.tool_counts) as Record<string, number>
+        } catch {
+          // ignore malformed JSON
+        }
       }
 
-      // Filter by window
-      if (params.window) {
-        messages = [...tokenBudget.filterByWindow(messages, params.window)]
+      let filesChanged: string[] = []
+      if (session.files_changed) {
+        try {
+          filesChanged = JSON.parse(session.files_changed) as string[]
+        } catch {
+          // ignore malformed JSON
+        }
       }
 
-      // Strip tool_result content if not requested
-      if (!params.includeToolResults) {
-        messages = messages.map(msg => {
-          const hasToolResult = msg.contentBlocks.some(b => b.type === 'tool_result')
-          if (!hasToolResult) return msg
-
-          const strippedBlocks: ContentBlock[] = msg.contentBlocks.map(b => {
-            if (b.type === 'tool_result') {
-              return { type: 'tool_result' as const, tool_use_id: b.tool_use_id }
-            }
-            return b
-          })
-
-          return { ...msg, contentBlocks: strippedBlocks }
-        })
-      }
-
-      // Apply token budget
-      let truncated = false
-      let totalMessages = messages.length
+      // Apply maxTokens budget enforcement
       if (params.maxTokens) {
-        const budgetResult = tokenBudget.fitWithinBudget(messages, params.maxTokens)
-        messages = [...budgetResult.messages]
-        truncated = budgetResult.truncated
-        totalMessages = budgetResult.totalMessages
-      }
+        const estimateTokens = (obj: unknown) => Math.ceil(JSON.stringify(obj).length / 4)
 
-      // Apply pagination
-      const page = pagination.paginate(messages, {
-        cursor: params.cursor,
-        limit: params.limit,
-      })
+        // 1. Truncate filesChanged to top 10
+        if (filesChanged.length > 10) filesChanged = filesChanged.slice(0, 10)
 
-      const meta = formatter.formatMeta(freshness)
-      const paginationResult = page.hasMore
-        ? { cursor: page.cursor!, hasMore: true, totalEstimate: page.totalEstimate }
-        : { cursor: '', hasMore: false, totalEstimate: page.totalEstimate }
+        // 2. Truncate toolBreakdown to top 10 by count
+        if (Object.keys(toolCounts).length > 10) {
+          const sorted = Object.entries(toolCounts).sort((a, b) => (b[1] as number) - (a[1] as number))
+          toolCounts = Object.fromEntries(sorted.slice(0, 10))
+        }
 
-      let distilled = undefined
-      if (params.focus && !params.includeToolResults) {
-        const distillResult = distillConversation(page.items, { focus: params.focus })
-        distilled = distillResult.messages
+        // 3. Merge smallest adjacent phases until under budget
+        while (phases.length > 2 && estimateTokens({ phases }) > params.maxTokens * 0.7) {
+          let smallestIdx = 0
+          let smallestCount = Infinity
+          for (let i = 0; i < phases.length; i++) {
+            if (phases[i].turnCount < smallestCount) {
+              smallestCount = phases[i].turnCount
+              smallestIdx = i
+            }
+          }
+          const mergeIdx = smallestIdx === 0 ? 1
+            : smallestIdx === phases.length - 1 ? smallestIdx - 1
+            : phases[smallestIdx - 1].turnCount <= phases[smallestIdx + 1].turnCount ? smallestIdx - 1 : smallestIdx + 1
+          const [a, b] = mergeIdx < smallestIdx ? [mergeIdx, smallestIdx] : [smallestIdx, mergeIdx]
+          const mergedTools = new Set([...phases[a].toolNames, ...phases[b].toolNames])
+          phases[a] = {
+            turnRange: { from: phases[a].turnRange.from, to: phases[b].turnRange.to },
+            description: phases[a].description,
+            toolNames: [...mergedTools],
+            errorCount: phases[a].errorCount + phases[b].errorCount,
+            turnCount: phases[a].turnCount + phases[b].turnCount,
+          }
+          phases.splice(b, 1)
+        }
       }
 
       const data = {
         sessionId: params.sessionId,
-        messages: page.items,
-        distilled,
-        totalMessages,
-        truncated,
+        metadata: {
+          topic: session.topic,
+          summary: session.summary,
+          startedAt: session.started_at,
+          endedAt: session.ended_at,
+          durationMinutes: session.duration_minutes,
+          model: session.model,
+          totalTurns: session.total_turns ?? messages.length,
+          totalTokens: session.total_tokens,
+          errorCount: session.error_count ?? 0,
+          correctionCount: session.correction_count ?? 0,
+          toolBreakdown: toolCounts,
+          filesChanged,
+        },
+        phases,
       }
 
-      const response = formatter.format(data, meta, paginationResult)
+      const meta = formatter.formatMeta(freshness)
+      const response = formatter.format(data, meta)
 
       return {
         content: [{ type: 'text' as const, text: JSON.stringify(response, null, 2) }],

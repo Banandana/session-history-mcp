@@ -17,4 +17,5 @@ export const TOKENS = {
   Analyzer: Symbol('Analyzer'),
   ResponseFormatter: Symbol('ResponseFormatter'),
   TurnIndexer: Symbol('TurnIndexer'),
+  PhaseClusterer: Symbol('PhaseClusterer'),
 } as const
