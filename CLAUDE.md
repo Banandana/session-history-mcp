@@ -114,6 +114,17 @@ Supporting infrastructure:
 - `PhaseClusterer` service — groups consecutive turns by activity category with singleton absorption
 - Removed: `conversation-distiller.ts`, `Focus` type, `filterByWindow`
 
+## Efficiency Fixes (2026-04-02)
+
+- **FTS indexing**: Uses `lastInsertRowid` from INSERT instead of N+1 SELECT queries per message
+- **Session discovery**: Set-based lookup with early exit once all needed sessions found
+- **FTS updates**: `INSERT OR REPLACE` instead of DELETE + INSERT
+- **Byte offset**: Removed double-update hack (no more `MAX_SAFE_INTEGER` placeholder)
+- **Migration safety**: Wrapped in transactions — version only bumps on success; `addColumnIfMissing` handles race conditions via try-catch
+- **query_turns dedup**: Extracted `parseToolNames()` and `summarizeFromDbRow()` helpers to eliminate duplicated summary logic in cross-session queries
+- **Type safety**: `TurnReference.role` and `ExpandedTurn.role` typed as `MessageRole` instead of `string`
+- **Summarization**: Fire-and-forget promise now has `.catch()` to prevent unhandled rejections
+
 ## Recently Fixed (2026-03-31)
 
 All issues from `docs/handoff-fix-analyze-and-conversation-quality.md` are resolved:
