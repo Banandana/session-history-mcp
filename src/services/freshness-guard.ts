@@ -3,6 +3,7 @@ import type { AdapterRegistry } from './adapter-registry'
 import type { IndexManager } from './index-manager'
 import type { LocalLlmClient } from './local-llm-client'
 import type { IndexState, NormalizedMessage, SessionMeta } from '../types'
+import type { TurnIndexer } from './turn-indexer'
 import { generateTopic } from './topic-generator'
 import { distillConversation } from './conversation-distiller'
 
@@ -29,6 +30,7 @@ export class FreshnessGuard {
     private readonly claudeDir: string,
     db: Database.Database,
     private readonly llmClient?: LocalLlmClient,
+    private readonly turnIndexer?: TurnIndexer,
   ) {
     this.db = db
   }
@@ -361,6 +363,9 @@ export class FreshnessGuard {
 
       // Compute and store session metrics
       this.computeSessionMetrics(sessionId)
+
+      // Index turn events for structured queries
+      this.turnIndexer?.indexSession(sessionId, messages)
     }
 
     await this.updateFileOffsets(sessionIds)

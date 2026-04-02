@@ -14,6 +14,7 @@ import { LocalLlmClient } from '../services/local-llm-client'
 import { ProjectResolver } from '../services/project-resolver'
 import { Analyzer } from '../services/analyzer'
 import { ResponseFormatter } from '../services/response-formatter'
+import { TurnIndexer } from '../services/turn-indexer'
 import { homedir } from 'node:os'
 import { join } from 'node:path'
 
@@ -41,12 +42,15 @@ export function registerInfrastructure(): void {
   const searchIndex = new SearchIndex(db)
   container.register(TOKENS.SearchIndex, { useValue: searchIndex })
 
+  const turnIndexer = new TurnIndexer(db)
+  container.register(TOKENS.TurnIndexer, { useValue: turnIndexer })
+
   // LLM
   const llmClient = new LocalLlmClient('http://10.1.10.20:30000/v1', 'QuantTrio/MiniMax-M2.5-AWQ')
   container.register(TOKENS.LocalLlmClient, { useValue: llmClient })
 
   // Freshness Guard
-  const freshnessGuard = new FreshnessGuard(registry, indexManager, claudeDir, db, llmClient)
+  const freshnessGuard = new FreshnessGuard(registry, indexManager, claudeDir, db, llmClient, turnIndexer)
   container.register(TOKENS.FreshnessGuard, { useValue: freshnessGuard })
 
   // Services

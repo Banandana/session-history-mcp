@@ -16,4 +16,5 @@ export const TOKENS = {
   ProjectResolver: Symbol('ProjectResolver'),
   Analyzer: Symbol('Analyzer'),
   ResponseFormatter: Symbol('ResponseFormatter'),
+  TurnIndexer: Symbol('TurnIndexer'),
 } as const
