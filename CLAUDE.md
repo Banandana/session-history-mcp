@@ -80,7 +80,7 @@ Add to `~/.claude/settings.local.json` under `mcpServers`:
 }
 ```
 
-### Available Tools (9)
+### Available Tools (11)
 
 | Tool | Purpose |
 |------|---------|
@@ -88,7 +88,9 @@ Add to `~/.claude/settings.local.json` under `mcpServers`:
 | `get_project` | Project detail — CLAUDE.md, settings, memory, stats |
 | `list_sessions` | Sessions filtered by project/date/branch |
 | `get_session` | Session detail — metadata, turns, files, subagents |
-| `get_conversation` | Conversation content with token budgeting |
+| `get_conversation` | Session overview — phase-clustered activity timeline |
+| `query_turns` | Search turns by tool name, error status, text pattern, time range |
+| `get_turns` | Full content for specific turns — tool inputs, outputs, text |
 | `search` | FTS5 full-text search across all sessions |
 | `get_changes` | File operations tracked across sessions |
 | `get_memory` | Cross-project memory access |
