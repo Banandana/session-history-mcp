@@ -124,9 +124,26 @@ export function registerGetSession(server: McpServer): void {
         result.hasThinking = session.has_thinking === 1
         result.worktreeBranch = session.worktree_branch
         result.speculationTimeSavedMs = session.speculation_time_saved_ms
+        const cacheRead = session.total_cache_read_tokens ?? 0
+        const cacheCreation = session.total_cache_creation_tokens ?? 0
         result.cacheTokens = {
-          creation: session.total_cache_creation_tokens ?? 0,
-          read: session.total_cache_read_tokens ?? 0,
+          creation: cacheCreation,
+          read: cacheRead,
+          hitRatio: Math.round(
+            (cacheRead / Math.max(session.total_tokens, 1)) * 1000
+          ) / 10,
+        }
+
+        const peakMsg = db.prepare(
+          'SELECT MAX(token_count) as peak FROM messages WHERE session_id = ?'
+        ).get(params.sessionId) as { peak: number | null }
+
+        result.tokenAccumulation = {
+          totalTokens: session.total_tokens,
+          peakMessageTokens: peakMsg.peak ?? 0,
+          avgTokensPerTurn: session.total_turns > 0
+            ? Math.round(session.total_tokens / session.total_turns)
+            : 0,
         }
 
         // PR links
@@ -177,6 +194,44 @@ export function registerGetSession(server: McpServer): void {
       }
 
       if (detail === 'full') {
+        // Enumerate collapses (not just count)
+        const collapses = db.prepare(
+          'SELECT collapse_id, summary, first_archived_uuid, last_archived_uuid FROM context_collapses WHERE session_id = ?'
+        ).all(params.sessionId) as Array<{
+          collapse_id: string; summary: string | null
+          first_archived_uuid: string | null; last_archived_uuid: string | null
+        }>
+        result.contextCollapses = collapses.map(c => ({
+          collapseId: c.collapse_id,
+          summary: c.summary,
+          firstArchivedUuid: c.first_archived_uuid,
+          lastArchivedUuid: c.last_archived_uuid,
+        }))
+
+        // Token accumulation curve
+        const msgs = db.prepare(
+          'SELECT token_count FROM messages WHERE session_id = ? ORDER BY timestamp'
+        ).all(params.sessionId) as Array<{ token_count: number }>
+
+        let cumulative = 0
+        const collapseCount = collapses.length
+        const totalMsgs = msgs.length
+        // Interpolate collapse positions evenly across the session
+        const collapsePositions = new Set(
+          Array.from({ length: collapseCount }, (_, i) =>
+            Math.round((totalMsgs / (collapseCount + 1)) * (i + 1))
+          )
+        )
+
+        result.tokenCurve = msgs.map((m, i) => {
+          cumulative += m.token_count
+          return {
+            turnIndex: i,
+            cumulativeTokens: cumulative,
+            isCollapse: collapsePositions.has(i),
+          }
+        })
+
         // Intent-based LLM analysis
         if (params.intent) {
           try {
