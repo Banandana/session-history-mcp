@@ -18,7 +18,7 @@ interface FileHistorySnapshot {
   readonly isSnapshotUpdate: boolean
 }
 
-function isFileHistorySnapshot(parsed: Record<string, unknown>): parsed is FileHistorySnapshot {
+function isFileHistorySnapshot(parsed: Record<string, unknown>): parsed is Record<string, unknown> & FileHistorySnapshot {
   return parsed.type === 'file-history-snapshot' && parsed.snapshot != null
 }
 

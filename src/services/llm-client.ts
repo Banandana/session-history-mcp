@@ -195,10 +195,24 @@ export class FallbackLlmClient implements LlmClient {
 }
 
 /**
+ * Check whether LLM functionality is disabled via environment variable.
+ * Set DISABLE_LLM=1 (or any truthy value) to prevent all LLM API calls.
+ */
+export function isLlmDisabled(): boolean {
+  const val = process.env.DISABLE_LLM
+  return val !== undefined && val !== '' && val !== '0' && val.toLowerCase() !== 'false'
+}
+
+/**
  * Build an LLM client stack from environment.
  * Priority: Anthropic API (ANTHROPIC_API_KEY) > local vLLM > none
+ * Returns empty client stack if DISABLE_LLM is set.
  */
 export function createLlmClient(localUrl: string, localModel: string): FallbackLlmClient {
+  if (isLlmDisabled()) {
+    return new FallbackLlmClient([])
+  }
+
   const clients: LlmClient[] = []
 
   const anthropicKey = process.env.ANTHROPIC_API_KEY ?? process.env.FANTHROPIC_API_KEY

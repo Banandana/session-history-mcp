@@ -5,17 +5,18 @@ import type { NormalizedMessage } from '../types'
 function makeMessage(
   overrides: Partial<NormalizedMessage> & { id: string }
 ): NormalizedMessage {
+  const { id, ...rest } = overrides
   return {
-    id: overrides.id,
+    id,
     sessionId: 'session-1',
-    role: overrides.role ?? 'user',
-    timestamp: overrides.timestamp ?? '2026-01-01T00:00:00Z',
-    contentBlocks: overrides.contentBlocks ?? [{ type: 'text', text: 'hello' }],
-    isError: overrides.isError ?? false,
-    isCorrection: overrides.isCorrection ?? false,
+    role: 'user',
+    timestamp: '2026-01-01T00:00:00Z',
+    contentBlocks: [{ type: 'text', text: 'hello' }],
+    isError: false,
+    isCorrection: false,
     hasThinking: false,
-    uuid: overrides.id,
-    ...overrides,
+    uuid: id,
+    ...rest,
   }
 }
 

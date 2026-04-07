@@ -104,7 +104,7 @@ function normalizeContentBlock(raw: Record<string, unknown>): ContentBlock {
     block.content = raw.content
     if (raw.is_error) block.content = raw.content
   }
-  return block as ContentBlock
+  return block as unknown as ContentBlock
 }
 
 const NEGATION_STARTS = /^(no[,.\s!]|stop[,.\s!]|don'?t\s|not that|wrong|nope|that'?s not|i said|i told you|should have|you should have)/
