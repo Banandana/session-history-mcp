@@ -231,5 +231,18 @@ describe('ContextAuditor', () => {
       const noCost = result.sessions.find((s: any) => s.id === 's-nocost')
       expect(noCost.costUsd).toBeNull()
     })
+
+    it('filters by cache hit ratio', () => {
+      // s1: 60000/100000 = 60%, s2: 5000/50000 = 10%, s3: 180000/200000 = 90%
+      const result = auditor.costBreakdown('full', {
+        filters: { minCacheHitRatio: 50 }
+      }) as any
+      // Should return s1 (60%) and s3 (90%), exclude s2 (10%)
+      expect(result.sessions.length).toBe(2)
+      const ids = result.sessions.map((s: any) => s.id)
+      expect(ids).toContain('s1')
+      expect(ids).toContain('s3')
+      expect(ids).not.toContain('s2')
+    })
   })
 })

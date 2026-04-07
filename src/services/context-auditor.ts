@@ -45,7 +45,7 @@ export class ContextAuditor {
     this.db.exec('CREATE INDEX IF NOT EXISTS idx_sessions_cost_usd ON sessions(cost_usd)')
   }
 
-  buildSessionFilters(filters?: ContextAuditFilters, prefix = 's'): SqlFilter {
+  private buildSessionFilters(filters?: ContextAuditFilters, prefix = 's'): SqlFilter {
     const conditions: string[] = []
     const params: (string | number)[] = []
 
@@ -88,14 +88,14 @@ export class ContextAuditor {
 
     if (filters.minCacheHitRatio != null) {
       conditions.push(
-        `CAST(COALESCE(${prefix}.total_cache_read_tokens, 0) AS REAL) / CASE WHEN ${prefix}.total_tokens = 0 THEN 1 ELSE ${prefix}.total_tokens END >= ?`
+        `(CAST(COALESCE(${prefix}.total_cache_read_tokens, 0) AS REAL) / CASE WHEN ${prefix}.total_tokens = 0 THEN 1 ELSE ${prefix}.total_tokens END * 100) >= ?`
       )
       params.push(filters.minCacheHitRatio)
     }
 
     if (filters.maxCacheHitRatio != null) {
       conditions.push(
-        `CAST(COALESCE(${prefix}.total_cache_read_tokens, 0) AS REAL) / CASE WHEN ${prefix}.total_tokens = 0 THEN 1 ELSE ${prefix}.total_tokens END <= ?`
+        `(CAST(COALESCE(${prefix}.total_cache_read_tokens, 0) AS REAL) / CASE WHEN ${prefix}.total_tokens = 0 THEN 1 ELSE ${prefix}.total_tokens END * 100) <= ?`
       )
       params.push(filters.maxCacheHitRatio)
     }
@@ -110,7 +110,7 @@ export class ContextAuditor {
     return { conditions, params }
   }
 
-  whereClause(filter: SqlFilter): string {
+  private whereClause(filter: SqlFilter): string {
     if (filter.conditions.length === 0) return ''
     return 'WHERE ' + filter.conditions.join(' AND ')
   }
@@ -165,7 +165,7 @@ export class ContextAuditor {
     const where = filter.conditions.length > 0
       ? 'WHERE ' + filter.conditions.join(' AND ')
       : ''
-    const limit = options.limit ?? 100
+    const limit = options.limit ?? 20
 
     const rows = this.db.prepare(`
       SELECT
@@ -251,7 +251,7 @@ export class ContextAuditor {
 
   private tokenAttributionSummary(options: { filters?: ContextAuditFilters; limit?: number }): TokenAttributionSummary {
     const filter = this.buildSessionFilters(options.filters)
-    const limit = options.limit ?? 100
+    const limit = options.limit ?? 20
 
     const msgConditions = [...filter.conditions, 'm.tool_names IS NOT NULL', "m.role = 'user'"]
     const where = 'WHERE ' + msgConditions.join(' AND ')
@@ -298,7 +298,7 @@ export class ContextAuditor {
     const where = filter.conditions.length > 0
       ? 'WHERE ' + filter.conditions.join(' AND ')
       : ''
-    const limit = options.limit ?? 100
+    const limit = options.limit ?? 20
 
     const sessionRows = this.db.prepare(`
       SELECT s.id, s.topic
@@ -782,7 +782,7 @@ export class ContextAuditor {
   ): SessionProfileSummary | SessionProfileFull {
     const filter = this.buildSessionFilters(options.filters)
     const where = this.whereClause(filter)
-    if (detail === 'full') return this.sessionProfileFull(where, filter.params, options.limit ?? 100)
+    if (detail === 'full') return this.sessionProfileFull(where, filter.params, options.limit ?? 20)
     return this.sessionProfileSummary(where, filter.params)
   }
 
