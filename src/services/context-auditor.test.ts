@@ -107,4 +107,108 @@ describe('ContextAuditor', () => {
       expect(result.tools[0].toolName).toBe('Read')
     })
   })
+
+  describe('context_utilization', () => {
+    it('returns token accumulation stats', () => {
+      const result = auditor.contextUtilization('summary', {}) as any
+      expect(result.avgTotalTokens).toBeGreaterThan(0)
+      expect(result.medianTotalTokens).toBeGreaterThan(0)
+      expect(result.sessionsWithCollapses.count).toBe(2) // s1 and s3 have collapses
+      expect(result.sessionsWithCollapses.percentage).toBeCloseTo(66.67, 0)
+    })
+
+    it('returns per-session data in full mode', () => {
+      const result = auditor.contextUtilization('full', {}) as any
+      expect(result.sessions.length).toBe(3)
+      expect(result.sessions[0].id).toBe('s3') // most tokens first
+      expect(result.sessions[0].collapseCount).toBe(2)
+    })
+  })
+
+  describe('cache_analysis', () => {
+    it('returns aggregate cache stats', () => {
+      const result = auditor.cacheAnalysis('summary', {}) as any
+      expect(result.overallHitRatio).toBeGreaterThan(0)
+      expect(result.sessionCount).toBe(3)
+      expect(result.totalCacheCreation).toBe(17000) // 10000+2000+5000
+      expect(result.totalCacheRead).toBe(245000) // 60000+5000+180000
+    })
+
+    it('returns per-session in full mode sorted by worst ratio', () => {
+      const result = auditor.cacheAnalysis('full', {}) as any
+      expect(result.sessions.length).toBe(3)
+      // s2 has worst ratio: 5000/50000 = 10%
+      expect(result.sessions[0].id).toBe('s2')
+    })
+  })
+
+  describe('collapse_analysis', () => {
+    it('returns collapse frequency stats', () => {
+      const result = auditor.collapseAnalysis('summary', {}) as any
+      expect(result.totalCollapses).toBe(3) // cc1,cc2,cc3
+      expect(result.sessionsWithCollapses.count).toBe(2) // s1 and s3
+      expect(result.maxCollapseSession.id).toBe('s3')
+      expect(result.maxCollapseSession.collapseCount).toBe(2)
+    })
+
+    it('returns per-session collapses in full mode', () => {
+      const result = auditor.collapseAnalysis('full', {}) as any
+      const s3 = result.sessions.find((s: any) => s.id === 's3')
+      expect(s3.collapses.length).toBe(2)
+      expect(s3.collapses[0].collapseId).toBe('cc1')
+    })
+
+    it('groups by day', () => {
+      const result = auditor.collapseAnalysis('summary', { groupBy: 'day' }) as any
+      expect(result.periods).toBeDefined()
+      expect(result.periods.length).toBeGreaterThan(0)
+    })
+  })
+
+  describe('groupBy for other metrics', () => {
+    it('context_utilization groups by day', () => {
+      const result = auditor.contextUtilization('summary', { groupBy: 'day' }) as any
+      expect(result.periods).toBeDefined()
+      expect(result.periods.length).toBe(3)
+    })
+
+    it('cache_analysis groups by day', () => {
+      const result = auditor.cacheAnalysis('summary', { groupBy: 'day' }) as any
+      expect(result.periods).toBeDefined()
+      expect(result.periods.length).toBeGreaterThan(0)
+    })
+  })
+
+  describe('edge cases', () => {
+    it('handles session with zero tokens', () => {
+      db.prepare(`
+        INSERT INTO sessions (id, source, project_slug, started_at, total_tokens, total_turns,
+          cost_usd, total_cache_read_tokens, total_cache_creation_tokens, models_used)
+        VALUES (?, 'claude-code', 'proj-a', '2026-04-04T10:00:00Z', 0, 0, NULL, 0, 0, '[]')
+      `).run('s-zero')
+
+      const result = auditor.cacheAnalysis('full', {}) as any
+      const zeroSession = result.sessions.find((s: any) => s.id === 's-zero')
+      expect(zeroSession.cacheHitRatio).toBe(0)
+    })
+
+    it('handles empty result set', () => {
+      const result = auditor.costBreakdown('summary', {
+        filters: { projectSlug: 'nonexistent' }
+      }) as any
+      expect(result.sessionCount).toBe(0)
+      expect(result.totalCost).toBe(0)
+    })
+
+    it('handles null cost_usd in cost_breakdown', () => {
+      db.prepare(`
+        INSERT INTO sessions (id, source, project_slug, started_at, total_tokens, total_turns, models_used)
+        VALUES (?, 'claude-code', 'proj-a', '2026-04-04T10:00:00Z', 1000, 5, '[]')
+      `).run('s-nocost')
+
+      const result = auditor.costBreakdown('full', {}) as any
+      const noCost = result.sessions.find((s: any) => s.id === 's-nocost')
+      expect(noCost.costUsd).toBeNull()
+    })
+  })
 })

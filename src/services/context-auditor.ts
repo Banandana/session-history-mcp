@@ -10,6 +10,12 @@ import type {
   TemporalGrouping,
   TokenAttributionSummary,
   TokenAttributionFull,
+  ContextUtilizationSummary,
+  ContextUtilizationFull,
+  CacheAnalysisSummary,
+  CacheAnalysisFull,
+  CollapseAnalysisSummary,
+  CollapseAnalysisFull,
 } from '../types/context-audit'
 
 interface SqlFilter {
@@ -352,6 +358,415 @@ export class ContextAuditor {
     })
 
     return { sessions }
+  }
+
+  contextUtilization(
+    detail: ContextAuditDetail,
+    options: { filters?: ContextAuditFilters; groupBy?: TemporalGrouping; limit?: number }
+  ): ContextUtilizationSummary | ContextUtilizationFull {
+    const limit = options.limit ?? 20
+    const filter = this.buildSessionFilters(options.filters)
+    const where = this.whereClause(filter)
+    if (detail === 'full') return this.contextUtilizationFull(where, filter.params, limit)
+    return this.contextUtilizationSummary(where, filter.params, options.groupBy)
+  }
+
+  private contextUtilizationSummary(
+    where: string,
+    params: (string | number)[],
+    groupBy?: TemporalGrouping
+  ): ContextUtilizationSummary {
+    const aggRow = this.db.prepare(`
+      SELECT AVG(s.total_tokens) as avg_total, MAX(s.total_tokens) as max_total,
+             COUNT(*) as session_count,
+             SUM(CASE WHEN cc.cnt > 0 THEN 1 ELSE 0 END) as sessions_with_collapses
+      FROM sessions s
+      LEFT JOIN (SELECT session_id, COUNT(*) as cnt FROM context_collapses GROUP BY session_id) cc
+        ON cc.session_id = s.id
+      ${where}
+    `).get(...params) as {
+      avg_total: number
+      max_total: number
+      session_count: number
+      sessions_with_collapses: number
+    }
+
+    const allTokens = this.db.prepare(
+      `SELECT total_tokens FROM sessions s ${where} ORDER BY total_tokens`
+    ).all(...params) as Array<{ total_tokens: number }>
+    const median = allTokens.length > 0
+      ? allTokens[Math.floor(allTokens.length / 2)].total_tokens
+      : 0
+
+    const peakAvg = this.db.prepare(`
+      SELECT AVG(peak) as avg_peak FROM (
+        SELECT MAX(m.token_count) as peak FROM messages m
+        JOIN sessions s ON m.session_id = s.id ${where}
+        GROUP BY m.session_id
+      )
+    `).get(...params) as { avg_peak: number | null }
+
+    const periods = groupBy
+      ? this.getContextUtilizationPeriods(groupBy, where, params)
+      : undefined
+
+    return {
+      avgTotalTokens: aggRow.avg_total ?? 0,
+      medianTotalTokens: median,
+      maxTotalTokens: aggRow.max_total ?? 0,
+      avgPeakMessageTokens: peakAvg.avg_peak ?? 0,
+      sessionsWithCollapses: {
+        count: aggRow.sessions_with_collapses,
+        percentage: aggRow.session_count > 0
+          ? Math.round(aggRow.sessions_with_collapses / aggRow.session_count * 10000) / 100
+          : 0,
+      },
+      periods,
+    }
+  }
+
+  private contextUtilizationFull(
+    where: string,
+    params: (string | number)[],
+    limit: number
+  ): ContextUtilizationFull {
+    const rows = this.db.prepare(`
+      SELECT s.id, s.topic, s.total_tokens, s.total_turns,
+             (SELECT MAX(m.token_count) FROM messages m WHERE m.session_id = s.id) as peak_msg,
+             (SELECT COUNT(*) FROM context_collapses cc WHERE cc.session_id = s.id) as collapse_count
+      FROM sessions s ${where}
+      ORDER BY s.total_tokens DESC LIMIT ?
+    `).all(...params, limit) as Array<{
+      id: string
+      topic: string | null
+      total_tokens: number
+      total_turns: number
+      peak_msg: number | null
+      collapse_count: number
+    }>
+
+    return {
+      sessions: rows.map(r => ({
+        id: r.id,
+        topic: r.topic,
+        totalTokens: r.total_tokens,
+        peakMessageTokens: r.peak_msg ?? 0,
+        collapseCount: r.collapse_count,
+        totalTurns: r.total_turns,
+      })),
+    }
+  }
+
+  private getContextUtilizationPeriods(
+    groupBy: TemporalGrouping,
+    where: string,
+    params: (string | number)[]
+  ): ContextUtilizationSummary['periods'] {
+    const fmt = STRFTIME_FORMATS[groupBy]
+    const rows = this.db.prepare(`
+      SELECT
+        strftime('${fmt}', s.started_at) AS period,
+        AVG(s.total_tokens) AS avg_total_tokens,
+        COUNT(*) AS session_count,
+        CAST(SUM(CASE WHEN cc.cnt > 0 THEN 1 ELSE 0 END) AS REAL) / MAX(COUNT(*), 1) * 100 AS collapse_rate
+      FROM sessions s
+      LEFT JOIN (SELECT session_id, COUNT(*) as cnt FROM context_collapses GROUP BY session_id) cc
+        ON cc.session_id = s.id
+      ${where}
+      GROUP BY period
+      ORDER BY period
+    `).all(...params) as Array<{
+      period: string
+      avg_total_tokens: number
+      session_count: number
+      collapse_rate: number
+    }>
+
+    return rows.map(r => ({
+      period: r.period,
+      avgTotalTokens: r.avg_total_tokens,
+      sessionCount: r.session_count,
+      collapseRate: r.collapse_rate,
+    }))
+  }
+
+  cacheAnalysis(
+    detail: ContextAuditDetail,
+    options: { filters?: ContextAuditFilters; groupBy?: TemporalGrouping; limit?: number }
+  ): CacheAnalysisSummary | CacheAnalysisFull {
+    const limit = options.limit ?? 20
+    const filter = this.buildSessionFilters(options.filters)
+    const where = this.whereClause(filter)
+    if (detail === 'full') return this.cacheAnalysisFull(where, filter.params, limit)
+    return this.cacheAnalysisSummary(where, filter.params, options.groupBy)
+  }
+
+  private cacheAnalysisSummary(
+    where: string,
+    params: (string | number)[],
+    groupBy?: TemporalGrouping
+  ): CacheAnalysisSummary {
+    const aggRow = this.db.prepare(`
+      SELECT
+        CAST(SUM(COALESCE(s.total_cache_read_tokens, 0)) AS REAL) * 100.0 /
+          CASE WHEN SUM(s.total_tokens) = 0 THEN 1 ELSE SUM(s.total_tokens) END AS overall_hit_ratio,
+        AVG(
+          CAST(COALESCE(s.total_cache_read_tokens, 0) AS REAL) * 100.0 /
+            CASE WHEN s.total_tokens = 0 THEN 1 ELSE s.total_tokens END
+        ) AS avg_hit_ratio,
+        COALESCE(SUM(s.total_cache_creation_tokens), 0) AS total_cache_creation,
+        COALESCE(SUM(s.total_cache_read_tokens), 0) AS total_cache_read,
+        COUNT(*) AS session_count
+      FROM sessions s
+      ${where}
+    `).get(...params) as {
+      overall_hit_ratio: number
+      avg_hit_ratio: number
+      total_cache_creation: number
+      total_cache_read: number
+      session_count: number
+    }
+
+    const periods = groupBy
+      ? this.getCacheAnalysisPeriods(groupBy, where, params)
+      : undefined
+
+    return {
+      overallHitRatio: aggRow.overall_hit_ratio ?? 0,
+      avgHitRatio: aggRow.avg_hit_ratio ?? 0,
+      totalCacheCreation: aggRow.total_cache_creation,
+      totalCacheRead: aggRow.total_cache_read,
+      sessionCount: aggRow.session_count,
+      periods,
+    }
+  }
+
+  private cacheAnalysisFull(
+    where: string,
+    params: (string | number)[],
+    limit: number
+  ): CacheAnalysisFull {
+    const rows = this.db.prepare(`
+      SELECT
+        s.id, s.topic, s.total_tokens,
+        COALESCE(s.total_cache_creation_tokens, 0) AS cache_creation,
+        COALESCE(s.total_cache_read_tokens, 0) AS cache_read,
+        CAST(COALESCE(s.total_cache_read_tokens, 0) AS REAL) * 100.0 /
+          CASE WHEN s.total_tokens = 0 THEN 1 ELSE s.total_tokens END AS hit_ratio
+      FROM sessions s
+      ${where}
+      ORDER BY hit_ratio ASC
+      LIMIT ?
+    `).all(...params, limit) as Array<{
+      id: string
+      topic: string | null
+      total_tokens: number
+      cache_creation: number
+      cache_read: number
+      hit_ratio: number
+    }>
+
+    return {
+      sessions: rows.map(r => ({
+        id: r.id,
+        topic: r.topic,
+        cacheHitRatio: Math.round(r.hit_ratio * 10) / 10,
+        cacheCreationTokens: r.cache_creation,
+        cacheReadTokens: r.cache_read,
+        totalTokens: r.total_tokens,
+      })),
+    }
+  }
+
+  private getCacheAnalysisPeriods(
+    groupBy: TemporalGrouping,
+    where: string,
+    params: (string | number)[]
+  ): CacheAnalysisSummary['periods'] {
+    const fmt = STRFTIME_FORMATS[groupBy]
+    const rows = this.db.prepare(`
+      SELECT
+        strftime('${fmt}', s.started_at) AS period,
+        CAST(SUM(COALESCE(s.total_cache_read_tokens, 0)) AS REAL) * 100.0 /
+          CASE WHEN SUM(s.total_tokens) = 0 THEN 1 ELSE SUM(s.total_tokens) END AS overall_hit_ratio,
+        AVG(
+          CAST(COALESCE(s.total_cache_read_tokens, 0) AS REAL) * 100.0 /
+            CASE WHEN s.total_tokens = 0 THEN 1 ELSE s.total_tokens END
+        ) AS avg_hit_ratio,
+        COALESCE(SUM(s.total_cache_creation_tokens), 0) AS total_cache_creation,
+        COALESCE(SUM(s.total_cache_read_tokens), 0) AS total_cache_read
+      FROM sessions s
+      ${where}
+      GROUP BY period
+      ORDER BY period
+    `).all(...params) as Array<{
+      period: string
+      overall_hit_ratio: number
+      avg_hit_ratio: number
+      total_cache_creation: number
+      total_cache_read: number
+    }>
+
+    return rows.map(r => ({
+      period: r.period,
+      overallHitRatio: r.overall_hit_ratio,
+      avgHitRatio: r.avg_hit_ratio,
+      totalCacheCreation: r.total_cache_creation,
+      totalCacheRead: r.total_cache_read,
+    }))
+  }
+
+  collapseAnalysis(
+    detail: ContextAuditDetail,
+    options: { filters?: ContextAuditFilters; groupBy?: TemporalGrouping; limit?: number }
+  ): CollapseAnalysisSummary | CollapseAnalysisFull {
+    const limit = options.limit ?? 20
+    const filter = this.buildSessionFilters(options.filters)
+    const where = this.whereClause(filter)
+    if (detail === 'full') return this.collapseAnalysisFull(where, filter.params, limit)
+    return this.collapseAnalysisSummary(where, filter.params, options.groupBy)
+  }
+
+  private collapseAnalysisSummary(
+    where: string,
+    params: (string | number)[],
+    groupBy?: TemporalGrouping
+  ): CollapseAnalysisSummary {
+    const aggRow = this.db.prepare(`
+      SELECT
+        COALESCE(SUM(cc.cnt), 0) AS total_collapses,
+        SUM(CASE WHEN cc.cnt > 0 THEN 1 ELSE 0 END) AS sessions_with_collapses,
+        COUNT(*) AS total_sessions
+      FROM sessions s
+      LEFT JOIN (SELECT session_id, COUNT(*) as cnt FROM context_collapses GROUP BY session_id) cc
+        ON cc.session_id = s.id
+      ${where}
+    `).get(...params) as {
+      total_collapses: number
+      sessions_with_collapses: number
+      total_sessions: number
+    }
+
+    const maxRow = this.db.prepare(`
+      SELECT s.id, s.topic, COUNT(*) as collapse_count
+      FROM context_collapses cc
+      JOIN sessions s ON s.id = cc.session_id
+      ${where ? where + ' AND 1=1' : ''}
+      GROUP BY cc.session_id
+      ORDER BY collapse_count DESC
+      LIMIT 1
+    `).get(...params) as { id: string; topic: string | null; collapse_count: number } | undefined
+
+    const periods = groupBy
+      ? this.getCollapseAnalysisPeriods(groupBy, where, params)
+      : undefined
+
+    return {
+      totalCollapses: aggRow.total_collapses,
+      avgCollapsesPerSession: aggRow.total_sessions > 0
+        ? aggRow.total_collapses / aggRow.total_sessions
+        : 0,
+      sessionsWithCollapses: {
+        count: aggRow.sessions_with_collapses,
+        percentage: aggRow.total_sessions > 0
+          ? Math.round(aggRow.sessions_with_collapses / aggRow.total_sessions * 10000) / 100
+          : 0,
+      },
+      maxCollapseSession: maxRow
+        ? { id: maxRow.id, topic: maxRow.topic, costUsd: null, collapseCount: maxRow.collapse_count }
+        : null,
+      periods,
+    }
+  }
+
+  private collapseAnalysisFull(
+    where: string,
+    params: (string | number)[],
+    limit: number
+  ): CollapseAnalysisFull {
+    const sessionRows = this.db.prepare(`
+      SELECT s.id, s.topic, s.total_tokens, COUNT(cc.collapse_id) as collapse_count
+      FROM sessions s
+      JOIN context_collapses cc ON cc.session_id = s.id
+      ${where}
+      GROUP BY s.id
+      ORDER BY collapse_count DESC
+      LIMIT ?
+    `).all(...params, limit) as Array<{
+      id: string
+      topic: string | null
+      total_tokens: number
+      collapse_count: number
+    }>
+
+    if (sessionRows.length === 0) return { sessions: [] }
+
+    const sessionIds = sessionRows.map(r => r.id)
+    const placeholders = sessionIds.map(() => '?').join(',')
+
+    const collapseRows = this.db.prepare(`
+      SELECT session_id, collapse_id, summary
+      FROM context_collapses
+      WHERE session_id IN (${placeholders})
+      ORDER BY rowid
+    `).all(...sessionIds) as Array<{
+      session_id: string
+      collapse_id: string
+      summary: string | null
+    }>
+
+    const collapseMap = new Map<string, Array<{ collapseId: string; summary: string | null }>>()
+    for (const row of collapseRows) {
+      if (!collapseMap.has(row.session_id)) {
+        collapseMap.set(row.session_id, [])
+      }
+      collapseMap.get(row.session_id)!.push({
+        collapseId: row.collapse_id,
+        summary: row.summary,
+      })
+    }
+
+    return {
+      sessions: sessionRows.map(r => ({
+        id: r.id,
+        topic: r.topic,
+        totalTokens: r.total_tokens,
+        collapses: collapseMap.get(r.id) ?? [],
+      })),
+    }
+  }
+
+  private getCollapseAnalysisPeriods(
+    groupBy: TemporalGrouping,
+    where: string,
+    params: (string | number)[]
+  ): CollapseAnalysisSummary['periods'] {
+    const fmt = STRFTIME_FORMATS[groupBy]
+    const rows = this.db.prepare(`
+      SELECT
+        strftime('${fmt}', s.started_at) AS period,
+        COALESCE(SUM(cc.cnt), 0) AS total_collapses,
+        COUNT(*) AS session_count,
+        CAST(COALESCE(SUM(cc.cnt), 0) AS REAL) / MAX(COUNT(*), 1) AS avg_per_session
+      FROM sessions s
+      LEFT JOIN (SELECT session_id, COUNT(*) as cnt FROM context_collapses GROUP BY session_id) cc
+        ON cc.session_id = s.id
+      ${where}
+      GROUP BY period
+      ORDER BY period
+    `).all(...params) as Array<{
+      period: string
+      total_collapses: number
+      session_count: number
+      avg_per_session: number
+    }>
+
+    return rows.map(r => ({
+      period: r.period,
+      totalCollapses: r.total_collapses,
+      sessionCount: r.session_count,
+      avgPerSession: r.avg_per_session,
+    }))
   }
 
   private getCostPeriods(groupBy: TemporalGrouping, filter: SqlFilter): CostPeriod[] {
