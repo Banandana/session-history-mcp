@@ -80,6 +80,7 @@ export function registerInfrastructure(): void {
   container.register(TOKENS.PhaseClusterer, { useValue: phaseClusterer })
 
   const contextAuditor = new ContextAuditor(db)
+  contextAuditor.ensureIndexes()
   container.register(TOKENS.ContextAuditor, { useValue: contextAuditor })
 }
 

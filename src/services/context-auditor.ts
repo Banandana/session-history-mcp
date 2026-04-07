@@ -41,6 +41,10 @@ const STRFTIME_FORMATS: Record<TemporalGrouping, string> = {
 export class ContextAuditor {
   constructor(private readonly db: Database.Database) {}
 
+  ensureIndexes(): void {
+    this.db.exec('CREATE INDEX IF NOT EXISTS idx_sessions_cost_usd ON sessions(cost_usd)')
+  }
+
   buildSessionFilters(filters?: ContextAuditFilters, prefix = 's'): SqlFilter {
     const conditions: string[] = []
     const params: (string | number)[] = []
