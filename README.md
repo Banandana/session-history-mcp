@@ -1,5 +1,7 @@
 # Claude Session MCP
 
+> **Note:** This project is not guaranteed to be maintained. Use at your own discretion.
+
 An MCP server that gives Claude introspective access to its own session history.
 
 ## What This Is
