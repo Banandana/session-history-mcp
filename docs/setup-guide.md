@@ -97,7 +97,7 @@ Any OpenAI-compatible `/v1/chat/completions` endpoint works:
 
 The LLM is used for:
 - Generating 2-3 sentence session summaries (async, background)
-- Intent-based session analysis when `intent` param is provided on `get_session`
+- Deep session analysis via `deep_analyze` (requires Anthropic API key)
 
 If the LLM is unavailable, the server works normally — summaries just stay `null`.
 
@@ -125,15 +125,18 @@ After setup, these tools are available to Claude Code:
 
 | Tool | What it does |
 |------|-------------|
-| `list_sessions` | Browse sessions with topic, metrics, summary. Supports `sortBy` (recent/longest/most_turns/most_tokens/errors) and `resolution` (low/medium). |
-| `get_session` | Drill into one session. Three detail levels (summary/metadata/full). `focus` (general/tools/errors/files/decisions) controls conversation lens. `intent` triggers LLM analysis. |
-| `get_conversation` | Raw messages with token budgeting and windowing. `focus` adds a distilled view. |
-| `search` | Full-text search across all session messages. |
-| `analyze` | Aggregate patterns: error-prone sessions, tool failures, costly sessions, frequent files. |
-| `list_projects` | All known projects with session counts. |
-| `get_project` | Project details: CLAUDE.md, settings, memory entries. |
-| `get_memory` | Cross-project memory access. |
-| `get_changes` | File operations tracked across sessions. |
+| `list_projects` | All known projects with session counts, memory presence, branch activity |
+| `get_project` | Project deep-dive — CLAUDE.md, settings, memory entries, session list |
+| `list_sessions` | Sessions filtered by project, date, branch, with sorting |
+| `get_session` | Session metadata at three detail levels: summary, metadata (tools/files/subagents), full (with LLM analysis) |
+| `get_conversation` | Phase-clustered session overview — groups turns by activity category |
+| `query_turns` | Search turns by tool name, error/correction status, text pattern, time range |
+| `get_turns` | Full content expansion for specific turns — tool inputs, outputs, text, token usage |
+| `search` | Full-text search across all indexed sessions |
+| `get_changes` | File operations tracked across sessions |
+| `get_memory` | Cross-project memory access |
+| `analyze` | Aggregate pattern discovery — errors, corrections, tool failures, costly sessions |
+| `deep_analyze` | Send entire session to Opus for comprehensive quality analysis |
 
 ## Troubleshooting
 
