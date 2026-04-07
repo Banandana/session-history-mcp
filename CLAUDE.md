@@ -80,14 +80,14 @@ Add to `~/.claude/settings.local.json` under `mcpServers`:
 }
 ```
 
-### Available Tools (12)
+### Available Tools (13)
 
 | Tool | Purpose |
 |------|---------|
 | `list_projects` | All known projects with metadata |
 | `get_project` | Project detail — CLAUDE.md, settings, memory, stats |
-| `list_sessions` | Sessions filtered by project/date/branch — includes title, cost, mode, tags, models used |
-| `get_session` | Session detail — metadata, turns, files, subagents, PR links, cache stats, context collapses |
+| `list_sessions` | Sessions filtered by project/date/branch/tokens/cost/cache — includes title, cost, mode, tags, models used |
+| `get_session` | Session detail — metadata, turns, files, subagents, PR links, cache stats, context collapses, token curve |
 | `get_conversation` | Session overview — phase-clustered activity timeline with cost and cache data |
 | `query_turns` | Search turns by tool name, error status, text pattern, time range |
 | `get_turns` | Full content for specific turns — tool inputs, outputs, text, thinking blocks (opt-in), per-turn model and cache tokens |
@@ -96,6 +96,7 @@ Add to `~/.claude/settings.local.json` under `mcpServers`:
 | `get_memory` | Cross-project memory access |
 | `analyze` | Pattern discovery — errors, corrections, tool failures, cache efficiency, model usage |
 | `deep_analyze` | Send entire session to Opus 1M for comprehensive quality analysis (requires ANTHROPIC_API_KEY) |
+| `context_audit` | Context usage auditing — cost, token attribution, cache, collapses, session profiles |
 
 ## Git Rules
 
@@ -162,6 +163,25 @@ Dual-backend LLM support via `FallbackLlmClient`:
 - **query_turns dedup**: Extracted `parseToolNames()` and `summarizeFromDbRow()` helpers to eliminate duplicated summary logic in cross-session queries
 - **Type safety**: `TurnReference.role` and `ExpandedTurn.role` typed as `MessageRole` instead of `string`
 - **Summarization**: Fire-and-forget promise now has `.catch()` to prevent unhandled rejections
+
+## Context Usage Auditing (2026-04-06)
+
+New `context_audit` tool with 6 metrics for first-class context usage analysis:
+
+- **cost_breakdown**: Total/avg cost, min/max sessions, temporal trends
+- **token_attribution**: Which tools consume the most context (tool result tokens)
+- **context_utilization**: Token accumulation stats, collapse frequency
+- **cache_analysis**: Cache hit ratios, creation vs read trends
+- **collapse_analysis**: Context collapse frequency and details
+- **session_profile**: Complete context profile per session
+
+All metrics support `detail=summary|full`, temporal `groupBy`, and filters (project, date range, token range, cost range, cache hit ratio, model).
+
+`list_sessions` enhanced with: `minTokens`, `maxTokens`, `minCost`, `maxCost`, `minCacheHitRatio`, `maxCacheHitRatio` filters; `cost` and `cache_efficiency` sort options; `cacheTokens` and `contextCollapseCount` in medium output.
+
+`get_session` enhanced with: `cacheTokens.hitRatio` and `tokenAccumulation` at metadata level; `contextCollapses` array and `tokenCurve` at full level.
+
+Phase 1 limitation: `token_count` = input+output combined; true context utilization % deferred to Phase 2 when `input_tokens`/`output_tokens` are stored separately.
 
 ## Recently Fixed (2026-03-31)
 
