@@ -179,6 +179,27 @@ describe('ContextAuditor', () => {
     })
   })
 
+  describe('session_profile', () => {
+    it('returns aggregate dashboard in summary mode', () => {
+      const result = auditor.sessionProfile('summary', {}) as any
+      expect(result.totalCost).toBeCloseTo(8.50)
+      expect(result.totalTokens).toBe(350000)
+      expect(result.sessionCount).toBe(3)
+      expect(result.topExpensive.length).toBeLessThanOrEqual(3)
+      expect(result.topTokenHeavy.length).toBeLessThanOrEqual(3)
+      expect(result.topWorstCache.length).toBeLessThanOrEqual(3)
+    })
+
+    it('returns full profile per session', () => {
+      const result = auditor.sessionProfile('full', {}) as any
+      expect(result.sessions.length).toBe(3)
+      const s1 = result.sessions.find((s: any) => s.id === 's1')
+      expect(s1.cacheTokens.hitRatio).toBeGreaterThan(0)
+      expect(s1.collapseCount).toBe(1)
+      expect(s1.topTools.length).toBeGreaterThan(0)
+    })
+  })
+
   describe('edge cases', () => {
     it('handles session with zero tokens', () => {
       db.prepare(`

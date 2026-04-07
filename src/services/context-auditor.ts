@@ -16,6 +16,9 @@ import type {
   CacheAnalysisFull,
   CollapseAnalysisSummary,
   CollapseAnalysisFull,
+  SessionProfileSummary,
+  SessionProfileFull,
+  SessionProfileDetail,
 } from '../types/context-audit'
 
 interface SqlFilter {
@@ -767,6 +770,184 @@ export class ContextAuditor {
       sessionCount: r.session_count,
       avgPerSession: r.avg_per_session,
     }))
+  }
+
+  sessionProfile(
+    detail: ContextAuditDetail,
+    options: { filters?: ContextAuditFilters; limit?: number }
+  ): SessionProfileSummary | SessionProfileFull {
+    const filter = this.buildSessionFilters(options.filters)
+    const where = this.whereClause(filter)
+    if (detail === 'full') return this.sessionProfileFull(where, filter.params, options.limit ?? 100)
+    return this.sessionProfileSummary(where, filter.params)
+  }
+
+  private sessionProfileSummary(
+    where: string,
+    params: (string | number)[]
+  ): SessionProfileSummary {
+    const aggRow = this.db.prepare(`
+      SELECT
+        COALESCE(SUM(s.cost_usd), 0) AS total_cost,
+        COALESCE(SUM(s.total_tokens), 0) AS total_tokens,
+        COUNT(*) AS session_count,
+        AVG(
+          CAST(COALESCE(s.total_cache_read_tokens, 0) AS REAL) * 100.0 /
+            CASE WHEN s.total_tokens = 0 THEN 1 ELSE s.total_tokens END
+        ) AS avg_cache_hit_ratio
+      FROM sessions s
+      ${where}
+    `).get(...params) as {
+      total_cost: number
+      total_tokens: number
+      session_count: number
+      avg_cache_hit_ratio: number
+    }
+
+    const collapseRow = this.db.prepare(`
+      SELECT COALESCE(SUM(cc.cnt), 0) AS total_collapses
+      FROM sessions s
+      LEFT JOIN (SELECT session_id, COUNT(*) as cnt FROM context_collapses GROUP BY session_id) cc
+        ON cc.session_id = s.id
+      ${where}
+    `).get(...params) as { total_collapses: number }
+
+    const topExpensive = this.db.prepare(`
+      SELECT s.id, s.topic, s.cost_usd
+      FROM sessions s
+      ${where ? where + ' AND s.cost_usd IS NOT NULL' : 'WHERE s.cost_usd IS NOT NULL'}
+      ORDER BY s.cost_usd DESC
+      LIMIT 3
+    `).all(...params) as Array<{ id: string; topic: string | null; cost_usd: number }>
+
+    const topTokenHeavy = this.db.prepare(`
+      SELECT s.id, s.topic, s.cost_usd, s.total_tokens
+      FROM sessions s
+      ${where}
+      ORDER BY s.total_tokens DESC
+      LIMIT 3
+    `).all(...params) as Array<{ id: string; topic: string | null; cost_usd: number | null; total_tokens: number }>
+
+    const topWorstCache = this.db.prepare(`
+      SELECT s.id, s.topic, s.cost_usd,
+        CAST(COALESCE(s.total_cache_read_tokens, 0) AS REAL) * 100.0 /
+          CASE WHEN s.total_tokens = 0 THEN 1 ELSE s.total_tokens END AS cache_hit_ratio
+      FROM sessions s
+      ${where ? where + ' AND s.total_tokens > 0' : 'WHERE s.total_tokens > 0'}
+      ORDER BY cache_hit_ratio ASC
+      LIMIT 3
+    `).all(...params) as Array<{ id: string; topic: string | null; cost_usd: number | null; cache_hit_ratio: number }>
+
+    return {
+      totalCost: aggRow.total_cost,
+      totalTokens: aggRow.total_tokens,
+      avgCacheHitRatio: aggRow.avg_cache_hit_ratio ?? 0,
+      totalCollapses: collapseRow.total_collapses,
+      sessionCount: aggRow.session_count,
+      topExpensive: topExpensive.map(r => ({ id: r.id, topic: r.topic, costUsd: r.cost_usd })),
+      topTokenHeavy: topTokenHeavy.map(r => ({ id: r.id, topic: r.topic, costUsd: r.cost_usd, totalTokens: r.total_tokens })),
+      topWorstCache: topWorstCache.map(r => ({ id: r.id, topic: r.topic, costUsd: r.cost_usd, cacheHitRatio: Math.round(r.cache_hit_ratio * 10) / 10 })),
+    }
+  }
+
+  private sessionProfileFull(
+    where: string,
+    params: (string | number)[],
+    limit: number
+  ): SessionProfileFull {
+    const rows = this.db.prepare(`
+      SELECT
+        s.id, s.topic, s.started_at, s.cost_usd, s.total_tokens, s.total_turns,
+        s.models_used,
+        COALESCE(s.total_cache_creation_tokens, 0) AS cache_creation,
+        COALESCE(s.total_cache_read_tokens, 0) AS cache_read,
+        CAST(COALESCE(s.total_cache_read_tokens, 0) AS REAL) * 100.0 /
+          CASE WHEN s.total_tokens = 0 THEN 1 ELSE s.total_tokens END AS hit_ratio,
+        (SELECT MAX(m.token_count) FROM messages m WHERE m.session_id = s.id) AS peak_msg,
+        (SELECT COUNT(*) FROM context_collapses cc WHERE cc.session_id = s.id) AS collapse_count,
+        CASE
+          WHEN s.started_at IS NOT NULL AND (SELECT MAX(m.timestamp) FROM messages m WHERE m.session_id = s.id) IS NOT NULL
+          THEN ROUND((julianday((SELECT MAX(m.timestamp) FROM messages m WHERE m.session_id = s.id)) - julianday(s.started_at)) * 1440, 1)
+          ELSE NULL
+        END AS duration_minutes
+      FROM sessions s
+      ${where}
+      ORDER BY s.total_tokens DESC
+      LIMIT ?
+    `).all(...params, limit) as Array<{
+      id: string
+      topic: string | null
+      started_at: string | null
+      cost_usd: number | null
+      total_tokens: number
+      total_turns: number
+      models_used: string | null
+      cache_creation: number
+      cache_read: number
+      hit_ratio: number
+      peak_msg: number | null
+      collapse_count: number
+      duration_minutes: number | null
+    }>
+
+    if (rows.length === 0) return { sessions: [] }
+
+    // Batch topTools query
+    const sessionIds = rows.map(r => r.id)
+    const placeholders = sessionIds.map(() => '?').join(',')
+
+    const toolRows = this.db.prepare(`
+      SELECT m.session_id, tool_name.value as tool_name, SUM(m.token_count) as total_tokens
+      FROM messages m, json_each(m.tool_names) as tool_name
+      WHERE m.session_id IN (${placeholders})
+        AND m.tool_names IS NOT NULL AND m.role = 'user'
+      GROUP BY m.session_id, tool_name.value
+      ORDER BY m.session_id, total_tokens DESC
+    `).all(...sessionIds) as Array<{
+      session_id: string
+      tool_name: string
+      total_tokens: number
+    }>
+
+    // Group tools by session, keep top 5 per session
+    const toolsBySession = new Map<string, Array<{ toolName: string; tokenCount: number }>>()
+    for (const row of toolRows) {
+      if (!toolsBySession.has(row.session_id)) {
+        toolsBySession.set(row.session_id, [])
+      }
+      const tools = toolsBySession.get(row.session_id)!
+      if (tools.length < 5) {
+        tools.push({ toolName: row.tool_name, tokenCount: row.total_tokens })
+      }
+    }
+
+    const sessions: SessionProfileDetail[] = rows.map(r => {
+      let modelsUsed: readonly string[] = []
+      if (r.models_used) {
+        try { modelsUsed = JSON.parse(r.models_used) } catch { /* ignore */ }
+      }
+
+      return {
+        id: r.id,
+        topic: r.topic,
+        startedAt: r.started_at,
+        durationMinutes: r.duration_minutes,
+        costUsd: r.cost_usd,
+        totalTokens: r.total_tokens,
+        cacheTokens: {
+          creation: r.cache_creation,
+          read: r.cache_read,
+          hitRatio: Math.round(r.hit_ratio * 10) / 10,
+        },
+        collapseCount: r.collapse_count,
+        totalTurns: r.total_turns,
+        peakMessageTokens: r.peak_msg ?? 0,
+        topTools: toolsBySession.get(r.id) ?? [],
+        modelsUsed,
+      }
+    })
+
+    return { sessions }
   }
 
   private getCostPeriods(groupBy: TemporalGrouping, filter: SqlFilter): CostPeriod[] {
