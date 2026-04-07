@@ -17,6 +17,7 @@ import { Analyzer } from '../services/analyzer'
 import { ResponseFormatter } from '../services/response-formatter'
 import { TurnIndexer } from '../services/turn-indexer'
 import { PhaseClusterer } from '../services/phase-clusterer'
+import { ContextAuditor } from '../services/context-auditor'
 import { homedir } from 'node:os'
 import { join } from 'node:path'
 
@@ -77,6 +78,9 @@ export function registerInfrastructure(): void {
 
   const phaseClusterer = new PhaseClusterer()
   container.register(TOKENS.PhaseClusterer, { useValue: phaseClusterer })
+
+  const contextAuditor = new ContextAuditor(db)
+  container.register(TOKENS.ContextAuditor, { useValue: contextAuditor })
 }
 
 export function registerAll(): void {
