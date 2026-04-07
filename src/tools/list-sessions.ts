@@ -15,7 +15,7 @@ const SORT_COLUMNS: Record<string, string> = {
   most_tokens: 'total_tokens DESC',
   errors: 'error_count DESC',
   cost: 'cost_usd IS NULL, cost_usd DESC',
-  cache_efficiency: 'CAST(COALESCE(total_cache_read_tokens, 0) AS REAL) / CASE WHEN total_tokens = 0 THEN 1 ELSE total_tokens END ASC',
+  cache_efficiency: 'CAST(COALESCE(total_cache_read_tokens, 0) AS REAL) / CASE WHEN (COALESCE(total_cache_read_tokens, 0) + COALESCE(total_cache_creation_tokens, 0)) = 0 THEN 1 ELSE (COALESCE(total_cache_read_tokens, 0) + COALESCE(total_cache_creation_tokens, 0)) END ASC',
 }
 
 export function registerListSessions(server: McpServer): void {
@@ -91,11 +91,11 @@ export function registerListSessions(server: McpServer): void {
         sqlParams.push(params.maxCost)
       }
       if (params.minCacheHitRatio != null) {
-        conditions.push('(CAST(COALESCE(total_cache_read_tokens, 0) AS REAL) / CASE WHEN total_tokens = 0 THEN 1 ELSE total_tokens END * 100) >= ?')
+        conditions.push('(CAST(COALESCE(total_cache_read_tokens, 0) AS REAL) * 100.0 / CASE WHEN (COALESCE(total_cache_read_tokens, 0) + COALESCE(total_cache_creation_tokens, 0)) = 0 THEN 1 ELSE (COALESCE(total_cache_read_tokens, 0) + COALESCE(total_cache_creation_tokens, 0)) END) >= ?')
         sqlParams.push(params.minCacheHitRatio)
       }
       if (params.maxCacheHitRatio != null) {
-        conditions.push('(CAST(COALESCE(total_cache_read_tokens, 0) AS REAL) / CASE WHEN total_tokens = 0 THEN 1 ELSE total_tokens END * 100) <= ?')
+        conditions.push('(CAST(COALESCE(total_cache_read_tokens, 0) AS REAL) * 100.0 / CASE WHEN (COALESCE(total_cache_read_tokens, 0) + COALESCE(total_cache_creation_tokens, 0)) = 0 THEN 1 ELSE (COALESCE(total_cache_read_tokens, 0) + COALESCE(total_cache_creation_tokens, 0)) END) <= ?')
         sqlParams.push(params.maxCacheHitRatio)
       }
 
@@ -144,7 +144,7 @@ export function registerListSessions(server: McpServer): void {
             read: (row.total_cache_read_tokens as number | null) ?? 0,
             hitRatio: Math.round(
               ((row.total_cache_read_tokens as number ?? 0) /
-                Math.max(row.total_tokens as number, 1)) * 1000
+                Math.max((row.total_cache_read_tokens as number ?? 0) + (row.total_cache_creation_tokens as number ?? 0), 1)) * 1000
             ) / 10,
           },
           contextCollapseCount: row.collapse_count as number,

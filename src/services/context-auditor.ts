@@ -88,14 +88,14 @@ export class ContextAuditor {
 
     if (filters.minCacheHitRatio != null) {
       conditions.push(
-        `(CAST(COALESCE(${prefix}.total_cache_read_tokens, 0) AS REAL) / CASE WHEN ${prefix}.total_tokens = 0 THEN 1 ELSE ${prefix}.total_tokens END * 100) >= ?`
+        `(CAST(COALESCE(${prefix}.total_cache_read_tokens, 0) AS REAL) * 100.0 / CASE WHEN (COALESCE(${prefix}.total_cache_read_tokens, 0) + COALESCE(${prefix}.total_cache_creation_tokens, 0)) = 0 THEN 1 ELSE (COALESCE(${prefix}.total_cache_read_tokens, 0) + COALESCE(${prefix}.total_cache_creation_tokens, 0)) END) >= ?`
       )
       params.push(filters.minCacheHitRatio)
     }
 
     if (filters.maxCacheHitRatio != null) {
       conditions.push(
-        `(CAST(COALESCE(${prefix}.total_cache_read_tokens, 0) AS REAL) / CASE WHEN ${prefix}.total_tokens = 0 THEN 1 ELSE ${prefix}.total_tokens END * 100) <= ?`
+        `(CAST(COALESCE(${prefix}.total_cache_read_tokens, 0) AS REAL) * 100.0 / CASE WHEN (COALESCE(${prefix}.total_cache_read_tokens, 0) + COALESCE(${prefix}.total_cache_creation_tokens, 0)) = 0 THEN 1 ELSE (COALESCE(${prefix}.total_cache_read_tokens, 0) + COALESCE(${prefix}.total_cache_creation_tokens, 0)) END) <= ?`
       )
       params.push(filters.maxCacheHitRatio)
     }
@@ -263,7 +263,7 @@ export class ContextAuditor {
         COUNT(*) AS message_count
       FROM messages m
       JOIN sessions s ON s.id = m.session_id
-      , json_each(m.tool_names) AS tool_name
+      , json_each(CASE WHEN m.tool_names LIKE '[%' THEN m.tool_names ELSE '["' || replace(m.tool_names, ',', '","') || '"]' END) AS tool_name
       ${where}
       GROUP BY tool_name.value
       ORDER BY total_tokens DESC
@@ -322,7 +322,7 @@ export class ContextAuditor {
         m.role,
         SUM(m.token_count) AS total_tokens
       FROM messages m
-      , json_each(m.tool_names) AS tool_name
+      , json_each(CASE WHEN m.tool_names LIKE '[%' THEN m.tool_names ELSE '["' || replace(m.tool_names, ',', '","') || '"]' END) AS tool_name
       WHERE m.session_id IN (${placeholders})
         AND m.tool_names IS NOT NULL
       GROUP BY m.session_id, tool_name.value, m.role
@@ -516,10 +516,12 @@ export class ContextAuditor {
     const aggRow = this.db.prepare(`
       SELECT
         CAST(SUM(COALESCE(s.total_cache_read_tokens, 0)) AS REAL) * 100.0 /
-          CASE WHEN SUM(s.total_tokens) = 0 THEN 1 ELSE SUM(s.total_tokens) END AS overall_hit_ratio,
+          CASE WHEN (SUM(COALESCE(s.total_cache_read_tokens, 0)) + SUM(COALESCE(s.total_cache_creation_tokens, 0))) = 0 THEN 1
+          ELSE (SUM(COALESCE(s.total_cache_read_tokens, 0)) + SUM(COALESCE(s.total_cache_creation_tokens, 0))) END AS overall_hit_ratio,
         AVG(
           CAST(COALESCE(s.total_cache_read_tokens, 0) AS REAL) * 100.0 /
-            CASE WHEN s.total_tokens = 0 THEN 1 ELSE s.total_tokens END
+            CASE WHEN (COALESCE(s.total_cache_read_tokens, 0) + COALESCE(s.total_cache_creation_tokens, 0)) = 0 THEN 1
+            ELSE (COALESCE(s.total_cache_read_tokens, 0) + COALESCE(s.total_cache_creation_tokens, 0)) END
         ) AS avg_hit_ratio,
         COALESCE(SUM(s.total_cache_creation_tokens), 0) AS total_cache_creation,
         COALESCE(SUM(s.total_cache_read_tokens), 0) AS total_cache_read,
@@ -559,7 +561,8 @@ export class ContextAuditor {
         COALESCE(s.total_cache_creation_tokens, 0) AS cache_creation,
         COALESCE(s.total_cache_read_tokens, 0) AS cache_read,
         CAST(COALESCE(s.total_cache_read_tokens, 0) AS REAL) * 100.0 /
-          CASE WHEN s.total_tokens = 0 THEN 1 ELSE s.total_tokens END AS hit_ratio
+          CASE WHEN (COALESCE(s.total_cache_read_tokens, 0) + COALESCE(s.total_cache_creation_tokens, 0)) = 0 THEN 1
+          ELSE (COALESCE(s.total_cache_read_tokens, 0) + COALESCE(s.total_cache_creation_tokens, 0)) END AS hit_ratio
       FROM sessions s
       ${where}
       ORDER BY hit_ratio ASC
@@ -595,10 +598,12 @@ export class ContextAuditor {
       SELECT
         strftime('${fmt}', s.started_at) AS period,
         CAST(SUM(COALESCE(s.total_cache_read_tokens, 0)) AS REAL) * 100.0 /
-          CASE WHEN SUM(s.total_tokens) = 0 THEN 1 ELSE SUM(s.total_tokens) END AS overall_hit_ratio,
+          CASE WHEN (SUM(COALESCE(s.total_cache_read_tokens, 0)) + SUM(COALESCE(s.total_cache_creation_tokens, 0))) = 0 THEN 1
+          ELSE (SUM(COALESCE(s.total_cache_read_tokens, 0)) + SUM(COALESCE(s.total_cache_creation_tokens, 0))) END AS overall_hit_ratio,
         AVG(
           CAST(COALESCE(s.total_cache_read_tokens, 0) AS REAL) * 100.0 /
-            CASE WHEN s.total_tokens = 0 THEN 1 ELSE s.total_tokens END
+            CASE WHEN (COALESCE(s.total_cache_read_tokens, 0) + COALESCE(s.total_cache_creation_tokens, 0)) = 0 THEN 1
+            ELSE (COALESCE(s.total_cache_read_tokens, 0) + COALESCE(s.total_cache_creation_tokens, 0)) END
         ) AS avg_hit_ratio,
         COALESCE(SUM(s.total_cache_creation_tokens), 0) AS total_cache_creation,
         COALESCE(SUM(s.total_cache_read_tokens), 0) AS total_cache_read
@@ -797,7 +802,8 @@ export class ContextAuditor {
         COUNT(*) AS session_count,
         AVG(
           CAST(COALESCE(s.total_cache_read_tokens, 0) AS REAL) * 100.0 /
-            CASE WHEN s.total_tokens = 0 THEN 1 ELSE s.total_tokens END
+            CASE WHEN (COALESCE(s.total_cache_read_tokens, 0) + COALESCE(s.total_cache_creation_tokens, 0)) = 0 THEN 1
+            ELSE (COALESCE(s.total_cache_read_tokens, 0) + COALESCE(s.total_cache_creation_tokens, 0)) END
         ) AS avg_cache_hit_ratio
       FROM sessions s
       ${where}
@@ -835,9 +841,10 @@ export class ContextAuditor {
     const topWorstCache = this.db.prepare(`
       SELECT s.id, s.topic, s.cost_usd,
         CAST(COALESCE(s.total_cache_read_tokens, 0) AS REAL) * 100.0 /
-          CASE WHEN s.total_tokens = 0 THEN 1 ELSE s.total_tokens END AS cache_hit_ratio
+          CASE WHEN (COALESCE(s.total_cache_read_tokens, 0) + COALESCE(s.total_cache_creation_tokens, 0)) = 0 THEN 1
+          ELSE (COALESCE(s.total_cache_read_tokens, 0) + COALESCE(s.total_cache_creation_tokens, 0)) END AS cache_hit_ratio
       FROM sessions s
-      ${where ? where + ' AND s.total_tokens > 0' : 'WHERE s.total_tokens > 0'}
+      ${where ? where + ' AND (COALESCE(s.total_cache_read_tokens, 0) + COALESCE(s.total_cache_creation_tokens, 0)) > 0' : 'WHERE (COALESCE(s.total_cache_read_tokens, 0) + COALESCE(s.total_cache_creation_tokens, 0)) > 0'}
       ORDER BY cache_hit_ratio ASC
       LIMIT 3
     `).all(...params) as Array<{ id: string; topic: string | null; cost_usd: number | null; cache_hit_ratio: number }>
@@ -866,7 +873,8 @@ export class ContextAuditor {
         COALESCE(s.total_cache_creation_tokens, 0) AS cache_creation,
         COALESCE(s.total_cache_read_tokens, 0) AS cache_read,
         CAST(COALESCE(s.total_cache_read_tokens, 0) AS REAL) * 100.0 /
-          CASE WHEN s.total_tokens = 0 THEN 1 ELSE s.total_tokens END AS hit_ratio,
+          CASE WHEN (COALESCE(s.total_cache_read_tokens, 0) + COALESCE(s.total_cache_creation_tokens, 0)) = 0 THEN 1
+          ELSE (COALESCE(s.total_cache_read_tokens, 0) + COALESCE(s.total_cache_creation_tokens, 0)) END AS hit_ratio,
         (SELECT MAX(m.token_count) FROM messages m WHERE m.session_id = s.id) AS peak_msg,
         (SELECT COUNT(*) FROM context_collapses cc WHERE cc.session_id = s.id) AS collapse_count,
         CASE
@@ -902,7 +910,7 @@ export class ContextAuditor {
 
     const toolRows = this.db.prepare(`
       SELECT m.session_id, tool_name.value as tool_name, SUM(m.token_count) as total_tokens
-      FROM messages m, json_each(m.tool_names) as tool_name
+      FROM messages m, json_each(CASE WHEN m.tool_names LIKE '[%' THEN m.tool_names ELSE '["' || replace(m.tool_names, ',', '","') || '"]' END) as tool_name
       WHERE m.session_id IN (${placeholders})
         AND m.tool_names IS NOT NULL AND m.role = 'user'
       GROUP BY m.session_id, tool_name.value

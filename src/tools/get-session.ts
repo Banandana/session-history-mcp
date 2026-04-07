@@ -130,7 +130,7 @@ export function registerGetSession(server: McpServer): void {
           creation: cacheCreation,
           read: cacheRead,
           hitRatio: Math.round(
-            (cacheRead / Math.max(session.total_tokens, 1)) * 1000
+            (cacheRead / Math.max(cacheRead + cacheCreation, 1)) * 1000
           ) / 10,
         }
 
