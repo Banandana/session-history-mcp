@@ -145,18 +145,24 @@ export class AnthropicLlmClient implements LlmClient {
 
 /**
  * Tries multiple LLM backends in priority order.
- * Anthropic API (if key present) > local OpenAI-compatible > unavailable.
+ * Local vLLM (cheap) > Anthropic API (fallback).
+ * deep_analyze bypasses this via getAnthropicClient() directly.
  */
 export class FallbackLlmClient implements LlmClient {
   readonly label: string
+  private activeClient: LlmClient | null = null
 
   constructor(private readonly clients: readonly LlmClient[]) {
     this.label = clients.map(c => c.label).join(' > ')
   }
 
   private async resolve(): Promise<LlmClient | null> {
+    if (this.activeClient) return this.activeClient
     for (const client of this.clients) {
-      if (await client.isAvailable()) return client
+      if (await client.isAvailable()) {
+        this.activeClient = client
+        return client
+      }
     }
     return null
   }
@@ -190,32 +196,19 @@ export class FallbackLlmClient implements LlmClient {
 }
 
 /**
- * Check whether LLM functionality is disabled via environment variable.
- * Set DISABLE_LLM=1 (or any truthy value) to prevent all LLM API calls.
- */
-export function isLlmDisabled(): boolean {
-  const val = process.env.DISABLE_LLM
-  return val !== undefined && val !== '' && val !== '0' && val.toLowerCase() !== 'false'
-}
-
-/**
  * Build an LLM client stack from environment.
- * Priority: Anthropic API (ANTHROPIC_API_KEY) > local vLLM > none
- * Returns empty client stack if DISABLE_LLM is set.
+ * Priority: local vLLM (cheap) > Anthropic API (fallback).
+ * If no keys/endpoints configured, the client stack is simply empty.
  */
 export function createLlmClient(localUrl: string, localModel: string): FallbackLlmClient {
-  if (isLlmDisabled()) {
-    return new FallbackLlmClient([])
-  }
-
   const clients: LlmClient[] = []
+
+  clients.push(new OpenAiLlmClient(localUrl, localModel))
 
   const anthropicKey = process.env.ANTHROPIC_API_KEY ?? process.env.FANTHROPIC_API_KEY
   if (anthropicKey) {
     clients.push(new AnthropicLlmClient(anthropicKey, 'claude-opus-4-6'))
   }
-
-  clients.push(new OpenAiLlmClient(localUrl, localModel))
 
   return new FallbackLlmClient(clients)
 }

@@ -11,7 +11,7 @@ import { TokenBudgetManager } from '../services/token-budget-manager'
 import { PaginationManager } from '../services/pagination-manager'
 
 import { LocalLlmClient } from '../services/local-llm-client'
-import { createLlmClient, isLlmDisabled } from '../services/llm-client'
+import { createLlmClient } from '../services/llm-client'
 import { ProjectResolver } from '../services/project-resolver'
 import { Analyzer } from '../services/analyzer'
 import { ResponseFormatter } from '../services/response-formatter'
@@ -47,12 +47,10 @@ export function registerInfrastructure(): void {
   const turnIndexer = new TurnIndexer(db)
   container.register(TOKENS.TurnIndexer, { useValue: turnIndexer })
 
-  // LLM — legacy local client + new fallback client
-  // Set DISABLE_LLM=1 to skip all LLM API calls (summarization, deep_analyze)
+  // LLM — legacy local client + new fallback client (local-first, Anthropic as fallback)
   const localLlmUrl = 'http://10.1.10.20:30000/v1'
   const localLlmModel = 'QuantTrio/MiniMax-M2.5-AWQ'
-  const llmDisabled = isLlmDisabled()
-  const llmClient = llmDisabled ? undefined : new LocalLlmClient(localLlmUrl, localLlmModel)
+  const llmClient = new LocalLlmClient(localLlmUrl, localLlmModel)
   container.register(TOKENS.LocalLlmClient, { useValue: llmClient })
   const fallbackLlmClient = createLlmClient(localLlmUrl, localLlmModel)
   container.register(TOKENS.LlmClient, { useValue: fallbackLlmClient })

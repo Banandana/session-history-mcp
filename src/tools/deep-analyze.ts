@@ -92,9 +92,7 @@ export function registerDeepAnalyze(server: McpServer): void {
 
       // Require Anthropic API specifically — this is an expensive operation
       if (!(await llmClient.isAvailable())) {
-        const reason = process.env.DISABLE_LLM
-          ? 'LLM functionality is disabled (DISABLE_LLM is set).'
-          : 'deep_analyze requires ANTHROPIC_API_KEY. Set it in the environment where the MCP server runs.'
+        const reason = 'deep_analyze requires ANTHROPIC_API_KEY. Set it in the environment where the MCP server runs.'
         return {
           content: [{
             type: 'text' as const,
