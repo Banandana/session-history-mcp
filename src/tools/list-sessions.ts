@@ -14,6 +14,8 @@ const SORT_COLUMNS: Record<string, string> = {
   most_turns: 'total_turns DESC',
   most_tokens: 'total_tokens DESC',
   errors: 'error_count DESC',
+  cost: 'cost_usd IS NULL, cost_usd DESC',
+  cache_efficiency: 'CAST(COALESCE(total_cache_read_tokens, 0) AS REAL) / CASE WHEN total_tokens = 0 THEN 1 ELSE total_tokens END ASC',
 }
 
 export function registerListSessions(server: McpServer): void {
@@ -26,9 +28,15 @@ export function registerListSessions(server: McpServer): void {
       branch: z.string().optional().describe('Filter by git branch'),
       from: z.string().optional().describe('Start date ISO 8601'),
       to: z.string().optional().describe('End date ISO 8601'),
-      sortBy: z.enum(['recent', 'longest', 'most_turns', 'most_tokens', 'errors']).optional().describe('Sort order (default: recent)'),
+      sortBy: z.enum(['recent', 'longest', 'most_turns', 'most_tokens', 'errors', 'cost', 'cache_efficiency']).optional().describe('Sort order (default: recent)'),
       resolution: z.enum(['low', 'medium']).optional().describe('Response density: low (scanning) or medium (default, full card)'),
       limit: z.number().int().min(1).max(1000).optional().describe('Maximum number of sessions to return'),
+      minTokens: z.number().optional().describe('Minimum total tokens'),
+      maxTokens: z.number().optional().describe('Maximum total tokens'),
+      minCost: z.number().optional().describe('Minimum cost in USD'),
+      maxCost: z.number().optional().describe('Maximum cost in USD'),
+      minCacheHitRatio: z.number().min(0).max(100).optional().describe('Minimum cache hit ratio (0-100)'),
+      maxCacheHitRatio: z.number().min(0).max(100).optional().describe('Maximum cache hit ratio (0-100)'),
       cursor: z.string().optional().describe('Pagination cursor'),
     },
     async (params) => {
@@ -66,6 +74,30 @@ export function registerListSessions(server: McpServer): void {
         conditions.push('started_at <= ?')
         sqlParams.push(params.to)
       }
+      if (params.minTokens != null) {
+        conditions.push('total_tokens >= ?')
+        sqlParams.push(params.minTokens)
+      }
+      if (params.maxTokens != null) {
+        conditions.push('total_tokens <= ?')
+        sqlParams.push(params.maxTokens)
+      }
+      if (params.minCost != null) {
+        conditions.push('cost_usd >= ?')
+        sqlParams.push(params.minCost)
+      }
+      if (params.maxCost != null) {
+        conditions.push('cost_usd <= ?')
+        sqlParams.push(params.maxCost)
+      }
+      if (params.minCacheHitRatio != null) {
+        conditions.push('(CAST(COALESCE(total_cache_read_tokens, 0) AS REAL) / CASE WHEN total_tokens = 0 THEN 1 ELSE total_tokens END * 100) >= ?')
+        sqlParams.push(params.minCacheHitRatio)
+      }
+      if (params.maxCacheHitRatio != null) {
+        conditions.push('(CAST(COALESCE(total_cache_read_tokens, 0) AS REAL) / CASE WHEN total_tokens = 0 THEN 1 ELSE total_tokens END * 100) <= ?')
+        sqlParams.push(params.maxCacheHitRatio)
+      }
 
       const whereClause = conditions.length > 0 ? `WHERE ${conditions.join(' AND ')}` : ''
       const orderBy = SORT_COLUMNS[params.sortBy ?? 'recent']
@@ -74,7 +106,9 @@ export function registerListSessions(server: McpServer): void {
         SELECT id, source, project_slug, cwd, branch, started_at, ended_at,
                duration_minutes, total_turns, total_tokens, message_count,
                error_count, topic, summary, custom_title, ai_title, tags,
-               cost_usd, mode, entrypoint, models_used
+               cost_usd, mode, entrypoint, models_used,
+               total_cache_read_tokens, total_cache_creation_tokens,
+               (SELECT COUNT(*) FROM context_collapses WHERE session_id = sessions.id) as collapse_count
         FROM sessions
         ${whereClause}
         ORDER BY ${orderBy}
@@ -105,6 +139,15 @@ export function registerListSessions(server: McpServer): void {
           entrypoint: row.entrypoint as string | null,
           tags: row.tags ? JSON.parse(row.tags as string) as string[] : null,
           modelsUsed: row.models_used ? JSON.parse(row.models_used as string) as string[] : null,
+          cacheTokens: {
+            creation: (row.total_cache_creation_tokens as number | null) ?? 0,
+            read: (row.total_cache_read_tokens as number | null) ?? 0,
+            hitRatio: Math.round(
+              ((row.total_cache_read_tokens as number ?? 0) /
+                Math.max(row.total_tokens as number, 1)) * 1000
+            ) / 10,
+          },
+          contextCollapseCount: row.collapse_count as number,
         }
       })
 
