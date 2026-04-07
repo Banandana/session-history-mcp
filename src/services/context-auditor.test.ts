@@ -82,4 +82,29 @@ describe('ContextAuditor', () => {
       expect(result.periods.length).toBe(3)
     })
   })
+
+  describe('token_attribution', () => {
+    it('returns tools ranked by result token consumption', () => {
+      const result = auditor.tokenAttribution('summary', {}) as any
+      expect(result.tools.length).toBeGreaterThan(0)
+      // Read appears in 3 user messages (m1, m3, m6) with tokens 5000+3000+15000=23000
+      const readTool = result.tools.find((t: any) => t.toolName === 'Read')
+      expect(readTool).toBeDefined()
+      expect(readTool.totalTokens).toBe(23000)
+      expect(readTool.pctOfTotal).toBeGreaterThan(0)
+    })
+
+    it('returns per-session breakdown in full mode', () => {
+      const result = auditor.tokenAttribution('full', {}) as any
+      expect(result.sessions.length).toBeGreaterThan(0)
+      const s1 = result.sessions.find((s: any) => s.sessionId === 's1')
+      expect(s1.tools.length).toBeGreaterThan(0)
+    })
+
+    it('filters by project', () => {
+      const result = auditor.tokenAttribution('summary', { filters: { projectSlug: 'proj-b' } }) as any
+      expect(result.tools.length).toBe(1)
+      expect(result.tools[0].toolName).toBe('Read')
+    })
+  })
 })

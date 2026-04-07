@@ -8,6 +8,8 @@ import type {
   CostSessionDetail,
   SessionRef,
   TemporalGrouping,
+  TokenAttributionSummary,
+  TokenAttributionFull,
 } from '../types/context-audit'
 
 interface SqlFilter {
@@ -222,6 +224,134 @@ export class ContextAuditor {
         ? { id: maxRow.id, topic: maxRow.topic, costUsd: maxRow.cost_usd }
         : null,
     }
+  }
+
+  tokenAttribution(
+    detail: ContextAuditDetail,
+    options: { filters?: ContextAuditFilters; limit?: number }
+  ): TokenAttributionSummary | TokenAttributionFull {
+    if (detail === 'full') {
+      return this.tokenAttributionFull(options)
+    }
+    return this.tokenAttributionSummary(options)
+  }
+
+  private tokenAttributionSummary(options: { filters?: ContextAuditFilters; limit?: number }): TokenAttributionSummary {
+    const filter = this.buildSessionFilters(options.filters)
+    const limit = options.limit ?? 100
+
+    const msgConditions = [...filter.conditions, 'm.tool_names IS NOT NULL', "m.role = 'user'"]
+    const where = 'WHERE ' + msgConditions.join(' AND ')
+
+    const rows = this.db.prepare(`
+      SELECT
+        tool_name.value AS tool_name,
+        SUM(m.token_count) AS total_tokens,
+        COUNT(*) AS message_count
+      FROM messages m
+      JOIN sessions s ON s.id = m.session_id
+      , json_each(m.tool_names) AS tool_name
+      ${where}
+      GROUP BY tool_name.value
+      ORDER BY total_tokens DESC
+      LIMIT ?
+    `).all(...filter.params, limit) as Array<{
+      tool_name: string
+      total_tokens: number
+      message_count: number
+    }>
+
+    const grandTotalRow = this.db.prepare(`
+      SELECT COALESCE(SUM(m.token_count), 0) AS grand_total
+      FROM messages m
+      JOIN sessions s ON s.id = m.session_id
+      ${where}
+    `).get(...filter.params) as { grand_total: number }
+
+    const grandTotal = grandTotalRow.grand_total
+
+    const tools = rows.map(r => ({
+      toolName: r.tool_name,
+      totalTokens: r.total_tokens,
+      messageCount: r.message_count,
+      pctOfTotal: grandTotal > 0 ? Math.round(r.total_tokens / grandTotal * 1000) / 10 : 0,
+    }))
+
+    return { tools, totalToolResultTokens: grandTotal }
+  }
+
+  private tokenAttributionFull(options: { filters?: ContextAuditFilters; limit?: number }): TokenAttributionFull {
+    const filter = this.buildSessionFilters(options.filters)
+    const where = filter.conditions.length > 0
+      ? 'WHERE ' + filter.conditions.join(' AND ')
+      : ''
+    const limit = options.limit ?? 100
+
+    const sessionRows = this.db.prepare(`
+      SELECT s.id, s.topic
+      FROM sessions s
+      ${where}
+      ORDER BY s.total_tokens DESC
+      LIMIT ?
+    `).all(...filter.params, limit) as Array<{ id: string; topic: string | null }>
+
+    if (sessionRows.length === 0) {
+      return { sessions: [] }
+    }
+
+    const sessionIds = sessionRows.map(r => r.id)
+    const placeholders = sessionIds.map(() => '?').join(',')
+
+    const toolRows = this.db.prepare(`
+      SELECT
+        m.session_id,
+        tool_name.value AS tool_name,
+        m.role,
+        SUM(m.token_count) AS total_tokens
+      FROM messages m
+      , json_each(m.tool_names) AS tool_name
+      WHERE m.session_id IN (${placeholders})
+        AND m.tool_names IS NOT NULL
+      GROUP BY m.session_id, tool_name.value, m.role
+    `).all(...sessionIds) as Array<{
+      session_id: string
+      tool_name: string
+      role: string
+      total_tokens: number
+    }>
+
+    const sessionToolMap = new Map<string, Map<string, { resultTokens: number; callTokens: number }>>()
+
+    for (const row of toolRows) {
+      if (!sessionToolMap.has(row.session_id)) {
+        sessionToolMap.set(row.session_id, new Map())
+      }
+      const toolMap = sessionToolMap.get(row.session_id)!
+      if (!toolMap.has(row.tool_name)) {
+        toolMap.set(row.tool_name, { resultTokens: 0, callTokens: 0 })
+      }
+      const entry = toolMap.get(row.tool_name)!
+      if (row.role === 'user') {
+        entry.resultTokens += row.total_tokens
+      } else {
+        entry.callTokens += row.total_tokens
+      }
+    }
+
+    const sessions = sessionRows.map(s => {
+      const toolMap = sessionToolMap.get(s.id) ?? new Map()
+      const tools = [...toolMap.entries()]
+        .map(([toolName, { resultTokens, callTokens }]) => ({ toolName, resultTokens, callTokens }))
+        .sort((a, b) => b.resultTokens - a.resultTokens)
+
+      return {
+        sessionId: s.id,
+        topic: s.topic,
+        tools,
+      }
+    })
+
+    return { sessions }
   }
 
   private getCostPeriods(groupBy: TemporalGrouping, filter: SqlFilter): CostPeriod[] {
