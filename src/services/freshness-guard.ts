@@ -70,7 +70,7 @@ export class FreshnessGuard {
     void this.generateSummaries().catch(() => { /* summarization failure is non-critical */ })
 
     // 6. Return metadata
-    const sessionCount = this.indexManager.getKnownSessionIds().size
+    const sessionCount = (this.db.prepare('SELECT COUNT(*) as cnt FROM sessions').get() as { cnt: number }).cnt
     return {
       syncDurationMs: Date.now() - start,
       indexedAt: new Date().toISOString(),
@@ -148,107 +148,125 @@ export class FreshnessGuard {
     for (const sessionId of sessionIds) {
       const meta = sessionMetaMap.get(sessionId)
 
-      // Insert session record
-      insertSession.run(
-        sessionId,
-        meta?.source ?? 'claude-code',
-        meta?.projectSlug ?? null,
-        meta?.cwd ?? null,
-        meta?.branch ?? null,
-        meta?.startedAt ?? null,
-        meta?.model ?? null,
-        meta?.totalTokens ?? 0,
-        meta?.totalTurns ?? 0,
-        meta?.summaryText ?? null,
-        0,
-        new Date().toISOString(),
-      )
-
-      // Parse and index messages
+      // Collect all async data before the transaction
       const messages: NormalizedMessage[] = []
       for await (const msg of this.registry.getMessages(sessionId)) {
         messages.push(msg)
       }
 
-      for (const msg of messages) {
-        const contentPreview = this.extractContentPreview(msg)
-        const searchText = this.extractSearchText(msg)
-        const tokenCount = msg.tokenUsage
-          ? msg.tokenUsage.input_tokens + msg.tokenUsage.output_tokens
-          : 0
-        const hasToolUse = msg.toolNames && msg.toolNames.length > 0 ? 1 : 0
-        const toolNames = msg.toolNames ? msg.toolNames.join(',') : null
-
-        const result = insertMessage.run(
-          msg.id,
-          sessionId,
-          msg.role,
-          msg.role,
-          msg.timestamp,
-          msg.model ?? null,
-          tokenCount,
-          hasToolUse,
-          toolNames,
-          msg.isError ? 1 : 0,
-          msg.isCorrection ? 1 : 0,
-          contentPreview,
-          msg.tokenUsage?.cache_creation_input_tokens ?? 0,
-          msg.tokenUsage?.cache_read_input_tokens ?? 0,
-          msg.hasThinking ? 1 : 0,
-          searchText,
-        )
-
-        // Insert full search text into FTS
-        if (searchText && result.lastInsertRowid) {
-          insertFts.run(result.lastInsertRowid, searchText)
-        }
-      }
-
-      // Aggregate token counts from messages back to session
-      const tokenRow = this.db.prepare(
-        'SELECT SUM(token_count) as total FROM messages WHERE session_id = ?'
-      ).get(sessionId) as { total: number | null } | undefined
-      if (tokenRow?.total) {
-        this.db.prepare('UPDATE sessions SET total_tokens = ?, total_turns = ? WHERE id = ?')
-          .run(tokenRow.total, messages.length, sessionId)
-      }
-
-      // Index file changes
-      const insertFileChange = this.db.prepare(`
-        INSERT OR IGNORE INTO file_changes (session_id, message_id, file_path, operation, timestamp)
-        VALUES (?, ?, ?, ?, ?)
-      `)
+      const fileChanges: Array<{ messageId?: string; filePath: string; operation: string; timestamp: string }> = []
       for await (const change of this.registry.getFileChanges(sessionId)) {
-        insertFileChange.run(
-          sessionId,
-          change.messageId ?? null,
-          change.filePath,
-          change.operation,
-          change.timestamp,
-        )
+        fileChanges.push(change)
       }
 
-      // Index subagents
-      const insertSubagent = this.db.prepare(`
-        INSERT OR IGNORE INTO subagents (id, session_id, agent_type, description, total_tokens, total_tools, duration_ms, model)
-        VALUES (?, ?, ?, ?, ?, ?, ?, ?)
-      `)
+      const subagents: Array<{ id: string; agentType?: string; description?: string; totalTokens?: number; totalTools?: number; durationMs?: number; model?: string }> = []
       for await (const agent of this.registry.getSubagents(sessionId)) {
-        insertSubagent.run(
-          agent.id,
-          sessionId,
-          agent.agentType ?? null,
-          agent.description ?? null,
-          agent.totalTokens ?? null,
-          agent.totalTools ?? null,
-          agent.durationMs ?? null,
-          agent.model ?? null,
-        )
+        subagents.push(agent)
       }
 
-      // Compute and store session metrics + metadata
-      this.computeSessionMetrics(sessionId, messages)
+      // Run all DB writes in a single transaction
+      this.db.transaction(() => {
+        // Insert session record
+        insertSession.run(
+          sessionId,
+          meta?.source ?? 'claude-code',
+          meta?.projectSlug ?? null,
+          meta?.cwd ?? null,
+          meta?.branch ?? null,
+          meta?.startedAt ?? null,
+          meta?.model ?? null,
+          meta?.totalTokens ?? 0,
+          meta?.totalTurns ?? 0,
+          meta?.summaryText ?? null,
+          0,
+          new Date().toISOString(),
+        )
+
+        for (const msg of messages) {
+          const contentPreview = this.extractContentPreview(msg)
+          const searchText = this.extractSearchText(msg)
+          const tokenCount = msg.tokenUsage
+            ? msg.tokenUsage.input_tokens + msg.tokenUsage.output_tokens
+            : 0
+          const hasToolUse = msg.toolNames && msg.toolNames.length > 0 ? 1 : 0
+          const toolNames = msg.toolNames ? msg.toolNames.join(',') : null
+
+          const result = insertMessage.run(
+            msg.id,
+            sessionId,
+            msg.role,
+            msg.role,
+            msg.timestamp,
+            msg.model ?? null,
+            tokenCount,
+            hasToolUse,
+            toolNames,
+            msg.isError ? 1 : 0,
+            msg.isCorrection ? 1 : 0,
+            contentPreview,
+            msg.tokenUsage?.cache_creation_input_tokens ?? 0,
+            msg.tokenUsage?.cache_read_input_tokens ?? 0,
+            msg.hasThinking ? 1 : 0,
+            searchText,
+          )
+
+          // Insert full search text into FTS
+          if (searchText && result.lastInsertRowid) {
+            insertFts.run(result.lastInsertRowid, searchText)
+          }
+        }
+
+        // Aggregate token counts from messages back to session
+        const tokenRow = this.db.prepare(
+          'SELECT SUM(token_count) as total FROM messages WHERE session_id = ?'
+        ).get(sessionId) as { total: number | null } | undefined
+        if (tokenRow?.total) {
+          this.db.prepare('UPDATE sessions SET total_tokens = ?, total_turns = ? WHERE id = ?')
+            .run(tokenRow.total, messages.length, sessionId)
+        }
+
+        // Index file changes
+        const insertFileChange = this.db.prepare(`
+          INSERT OR IGNORE INTO file_changes (session_id, message_id, file_path, operation, timestamp)
+          VALUES (?, ?, ?, ?, ?)
+        `)
+        for (const change of fileChanges) {
+          insertFileChange.run(
+            sessionId,
+            change.messageId ?? null,
+            change.filePath,
+            change.operation,
+            change.timestamp,
+          )
+        }
+
+        // Index subagents
+        const insertSubagent = this.db.prepare(`
+          INSERT OR IGNORE INTO subagents (id, session_id, agent_type, description, total_tokens, total_tools, duration_ms, model)
+          VALUES (?, ?, ?, ?, ?, ?, ?, ?)
+        `)
+        for (const agent of subagents) {
+          insertSubagent.run(
+            agent.id,
+            sessionId,
+            agent.agentType ?? null,
+            agent.description ?? null,
+            agent.totalTokens ?? null,
+            agent.totalTools ?? null,
+            agent.durationMs ?? null,
+            agent.model ?? null,
+          )
+        }
+
+        // Compute and store session metrics + metadata
+        this.computeSessionMetrics(sessionId, messages)
+      })()
+
+      // Metadata sync is async (fetches cost data) — must be outside transaction
       await this.syncSessionMetadata(sessionId, meta?.projectSlug)
+
+      // Index turn events for structured queries
+      this.turnIndexer?.indexSession(sessionId, messages)
     }
 
     // Update offsets with real file sizes
@@ -265,7 +283,20 @@ export class FreshnessGuard {
       INSERT INTO messages_fts (rowid, search_text) VALUES (?, ?)
     `)
 
+    const selectExistingRowids = this.db.prepare(
+      'SELECT rowid FROM messages WHERE session_id = ?'
+    )
+    const deleteFtsEntry = this.db.prepare(
+      'DELETE FROM messages_fts WHERE rowid = ?'
+    )
+
     for (const sessionId of sessionIds) {
+      // Delete stale FTS entries before re-inserting messages
+      const existingRowids = selectExistingRowids.all(sessionId) as Array<{ rowid: number }>
+      for (const { rowid } of existingRowids) {
+        deleteFtsEntry.run(rowid)
+      }
+
       const messages: NormalizedMessage[] = []
       for await (const msg of this.registry.getMessages(sessionId)) {
         messages.push(msg)
@@ -372,22 +403,27 @@ export class FreshnessGuard {
     const deleteCollapses = this.db.prepare('DELETE FROM context_collapses WHERE session_id = ?')
     const deleteTurnEvents = this.db.prepare('DELETE FROM turn_events WHERE session_id = ?')
 
-    for (const sessionId of sessionIds) {
-      // Delete FTS entries for messages in this session
-      const messageRows = this.db.prepare(
-        'SELECT rowid FROM messages WHERE session_id = ?'
-      ).all(sessionId) as { rowid: number }[]
-      for (const row of messageRows) {
-        this.db.prepare('DELETE FROM messages_fts WHERE rowid = ?').run(row.rowid)
-      }
+    const deleteFtsEntry = this.db.prepare('DELETE FROM messages_fts WHERE rowid = ?')
+    const selectMessageRowids = this.db.prepare(
+      'SELECT rowid FROM messages WHERE session_id = ?'
+    )
 
-      deleteMessages.run(sessionId)
-      deleteFileChanges.run(sessionId)
-      deleteSubagents.run(sessionId)
-      deletePrLinks.run(sessionId)
-      deleteCollapses.run(sessionId)
-      deleteTurnEvents.run(sessionId)
-      deleteSession.run(sessionId)
+    for (const sessionId of sessionIds) {
+      this.db.transaction(() => {
+        // Delete FTS entries for messages in this session
+        const messageRows = selectMessageRowids.all(sessionId) as { rowid: number }[]
+        for (const row of messageRows) {
+          deleteFtsEntry.run(row.rowid)
+        }
+
+        deleteMessages.run(sessionId)
+        deleteFileChanges.run(sessionId)
+        deleteSubagents.run(sessionId)
+        deletePrLinks.run(sessionId)
+        deleteCollapses.run(sessionId)
+        deleteTurnEvents.run(sessionId)
+        deleteSession.run(sessionId)
+      })()
     }
   }
 

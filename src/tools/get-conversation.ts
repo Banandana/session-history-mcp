@@ -10,6 +10,10 @@ import type { PhaseClusterer, Phase } from '../services/phase-clusterer'
 import type { NormalizedMessage } from '../types'
 import { ConversationParser } from '../adapters/claude-code/conversation-parser'
 
+function validateSessionId(id: string): boolean {
+  return /^[a-f0-9-]{32,40}$/i.test(id)
+}
+
 interface SessionRow {
   readonly project_slug: string | null
   readonly topic: string | null
@@ -50,6 +54,12 @@ export function registerGetConversation(server: McpServer): void {
       const claudeDir = container.resolve<string>(TOKENS.ClaudeDataDir)
 
       const freshness = await freshnessGuard.ensureFresh()
+
+      if (!validateSessionId(params.sessionId)) {
+        return {
+          content: [{ type: 'text' as const, text: JSON.stringify({ error: `Invalid session ID format: ${params.sessionId}` }, null, 2) }],
+        }
+      }
 
       const session = db.prepare(
         `SELECT project_slug, topic, summary, started_at, ended_at, duration_minutes,
@@ -94,10 +104,16 @@ export function registerGetConversation(server: McpServer): void {
         }
       }
 
-      let filesChanged: string[] = []
+      let filesChanged: Array<{ path: string; op: string }> = []
       if (session.files_changed) {
         try {
-          filesChanged = JSON.parse(session.files_changed) as string[]
+          const parsed: unknown = JSON.parse(session.files_changed)
+          if (Array.isArray(parsed)) {
+            // Handle both object format [{path, op}] and legacy string format ["file.ts"]
+            filesChanged = parsed.map((item: unknown) =>
+              typeof item === 'string' ? { path: item, op: 'unknown' } : item as { path: string; op: string }
+            )
+          }
         } catch {
           // ignore malformed JSON
         }

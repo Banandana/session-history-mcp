@@ -135,11 +135,8 @@ export class Analyzer {
     let sql = `
       SELECT m.tool_names, COUNT(*) as failure_count
       FROM messages m
+      JOIN sessions s ON m.session_id = s.id
     `
-
-    if (options?.projectSlug) {
-      sql += ` JOIN sessions s ON m.session_id = s.id`
-    }
 
     sql += ` WHERE m.is_error = 1 AND m.tool_names IS NOT NULL`
 
@@ -281,11 +278,8 @@ export class Analyzer {
     let sql = `
       SELECT model, COUNT(*) as msg_count, SUM(token_count) as total_tokens
       FROM messages m
+      JOIN sessions s ON m.session_id = s.id
     `
-
-    if (options?.projectSlug) {
-      sql += ` JOIN sessions s ON m.session_id = s.id`
-    }
 
     sql += ` WHERE model IS NOT NULL`
 

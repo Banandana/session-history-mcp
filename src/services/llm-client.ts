@@ -149,19 +149,14 @@ export class AnthropicLlmClient implements LlmClient {
  */
 export class FallbackLlmClient implements LlmClient {
   readonly label: string
-  private activeClient: LlmClient | null = null
 
   constructor(private readonly clients: readonly LlmClient[]) {
     this.label = clients.map(c => c.label).join(' > ')
   }
 
   private async resolve(): Promise<LlmClient | null> {
-    if (this.activeClient) return this.activeClient
     for (const client of this.clients) {
-      if (await client.isAvailable()) {
-        this.activeClient = client
-        return client
-      }
+      if (await client.isAvailable()) return client
     }
     return null
   }

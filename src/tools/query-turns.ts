@@ -51,6 +51,10 @@ interface TurnEventRow {
   readonly text_preview: string | null
 }
 
+function validateSessionId(id: string): boolean {
+  return /^[a-f0-9-]{32,40}$/i.test(id)
+}
+
 // ── Helpers ────────────────────────────────────────────────────────────────────
 
 export function parseToolNames(json: string): readonly string[] {
@@ -165,7 +169,13 @@ export function messageMatchesFilters(
   // Text pattern filter
   if (filters.textPattern) {
     const text = getTextContent(msg.contentBlocks)
-    const regex = new RegExp(filters.textPattern, 'i')
+    let regex: RegExp
+    try {
+      regex = new RegExp(filters.textPattern, 'i')
+    } catch {
+      // Invalid regex pattern — skip filter gracefully
+      return { matches: true }
+    }
     const match = regex.exec(text)
     if (!match) return { matches: false }
 
@@ -194,6 +204,10 @@ async function querySingleSession(
   ).get(sessionId) as SessionRow | undefined
 
   if (!session) {
+    return { results: [], total: 0 }
+  }
+
+  if (!validateSessionId(sessionId)) {
     return { results: [], total: 0 }
   }
 
@@ -252,6 +266,7 @@ async function ensureTurnEventsIndexed(
   const parser = new ConversationParser()
 
   for (const session of unindexed) {
+    if (!validateSessionId(session.id)) continue
     const projectSlug = session.project_slug ?? 'unknown'
     const sessionPath = join(claudeDir, 'projects', projectSlug, `${session.id}.jsonl`)
 
@@ -374,7 +389,7 @@ export function registerQueryTurns(server: McpServer): void {
         from: z.number().optional().describe('Start turn index (inclusive)'),
         to: z.number().optional().describe('End turn index (inclusive)'),
       }).optional().describe('Turn index range (single-session only, requires sessionId)'),
-      limit: z.number().optional().describe('Max results (default 50)'),
+      limit: z.number().int().min(1).max(1000).optional().describe('Max results (default 50)'),
       cursor: z.string().optional().describe('Offset-based pagination cursor'),
     },
     async (params) => {
@@ -411,7 +426,8 @@ export function registerQueryTurns(server: McpServer): void {
 
       const freshness = await freshnessGuard.ensureFresh()
       const limit = params.limit ?? 50
-      const offset = params.cursor ? parseInt(params.cursor, 10) : 0
+      const rawOffset = params.cursor ? parseInt(params.cursor, 10) : 0
+      const offset = isNaN(rawOffset) || rawOffset < 0 ? 0 : rawOffset
 
       const filters: TurnFilters = {
         toolNames: params.toolNames,

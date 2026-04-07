@@ -31,7 +31,11 @@ export class PaginationManager {
   }
 
   decodeCursor(cursor: string): number {
-    const data = JSON.parse(Buffer.from(cursor, 'base64url').toString())
-    return data.o ?? 0
+    try {
+      const data = JSON.parse(Buffer.from(cursor, 'base64url').toString())
+      return typeof data?.o === 'number' ? data.o : 0
+    } catch {
+      return 0
+    }
   }
 }

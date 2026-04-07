@@ -19,7 +19,7 @@ export function registerGetChanges(server: McpServer): void {
       project: z.string().optional().describe('Filter by project slug'),
       path: z.string().optional().describe('Resolve project from filesystem path'),
       cursor: z.string().optional().describe('Pagination cursor'),
-      limit: z.number().optional().describe('Maximum results to return'),
+      limit: z.number().int().min(1).max(1000).optional().describe('Maximum results to return'),
     },
     async (params) => {
       const freshnessGuard = container.resolve<FreshnessGuard>(TOKENS.FreshnessGuard)

@@ -1,10 +1,8 @@
 export const TOKENS = {
   ClaudeDataDir: Symbol('ClaudeDataDir'),
   Database: Symbol('Database'),
-  HttpClient: Symbol('HttpClient'),
   LocalLlmUrl: Symbol('LocalLlmUrl'),
   LocalLlmModel: Symbol('LocalLlmModel'),
-  SessionAdapter: Symbol('SessionAdapter'),
   AdapterRegistry: Symbol('AdapterRegistry'),
   IndexManager: Symbol('IndexManager'),
   SearchIndex: Symbol('SearchIndex'),

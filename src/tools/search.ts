@@ -40,16 +40,22 @@ export function registerSearch(server: McpServer): void {
         ? { from: params.from, to: params.to }
         : undefined
 
+      // Pass offset + limit + 1 to SQL so pagination can detect hasMore,
+      // but let the pagination layer handle actual slicing.
+      const paginationOffset = params.cursor
+        ? pagination.decodeCursor(params.cursor)
+        : 0
+      const limit = params.maxResults ?? 50
       const results = searchIndex.search(params.query, {
         projectSlug,
         sessionId: params.sessionId,
         dateRange,
-        limit: params.maxResults,
+        limit: paginationOffset + limit + 1,
       })
 
       const page = pagination.paginate(results, {
         cursor: params.cursor,
-        limit: params.maxResults,
+        limit,
       })
 
       const meta = formatter.formatMeta(freshness)

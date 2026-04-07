@@ -114,21 +114,25 @@ export class IndexManager {
       this.db.transaction(() => {
         this.migrateToV1()
       })()
+      this.db.pragma('user_version = 1')
     }
     if (userVersion < 2) {
       this.db.transaction(() => {
         this.migrateToV2()
       })()
+      this.db.pragma('user_version = 2')
     }
     if (userVersion < 3) {
       this.db.transaction(() => {
         this.migrateToV3()
       })()
+      this.db.pragma('user_version = 3')
     }
     if (userVersion < 4) {
       this.db.transaction(() => {
         this.migrateToV4()
       })()
+      this.db.pragma('user_version = 4')
     }
   }
 
@@ -154,8 +158,6 @@ export class IndexManager {
     `)
 
     this.addColumnIfMissing('sessions', 'turn_events_indexed', 'INTEGER DEFAULT 0')
-
-    this.db.pragma('user_version = 2')
   }
 
   private hasColumn(table: string, column: string): boolean {
@@ -197,8 +199,6 @@ export class IndexManager {
       CREATE INDEX IF NOT EXISTS idx_sessions_error_count ON sessions(error_count);
       CREATE INDEX IF NOT EXISTS idx_sessions_total_tokens ON sessions(total_tokens);
     `)
-
-    this.db.pragma('user_version = 1')
   }
 
   private migrateToV3(): void {
@@ -249,8 +249,6 @@ export class IndexManager {
 
       CREATE INDEX IF NOT EXISTS idx_context_collapses_session_id ON context_collapses(session_id);
     `)
-
-    this.db.pragma('user_version = 3')
   }
 
   private migrateToV4(): void {
@@ -271,8 +269,6 @@ export class IndexManager {
 
     // Force full re-index of all sessions so search_text gets populated
     this.db.exec(`UPDATE sessions SET byte_offset = 0`)
-
-    this.db.pragma('user_version = 4')
   }
 
   getSessionOffset(sessionId: string): number {

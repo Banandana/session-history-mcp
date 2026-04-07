@@ -10,6 +10,10 @@ import type { NormalizedMessage } from '../types'
 import type { FallbackLlmClient } from '../services/llm-client'
 import { ConversationParser } from '../adapters/claude-code/conversation-parser'
 
+function validateSessionId(id: string): boolean {
+  return /^[a-f0-9-]{32,40}$/i.test(id)
+}
+
 function formatMessage(msg: NormalizedMessage, index: number): string {
   const parts: string[] = []
   parts.push(`[${index}] ${msg.role} @ ${msg.timestamp}`)
@@ -107,6 +111,12 @@ export function registerDeepAnalyze(server: McpServer): void {
               error: 'deep_analyze requires ANTHROPIC_API_KEY. Set it in the environment where the MCP server runs.',
             }, null, 2),
           }],
+        }
+      }
+
+      if (!validateSessionId(params.sessionId)) {
+        return {
+          content: [{ type: 'text' as const, text: JSON.stringify({ error: `Invalid session ID format: ${params.sessionId}` }, null, 2) }],
         }
       }
 

@@ -13,7 +13,7 @@ export function registerListProjects(server: McpServer): void {
     'List all known projects with session counts, last activity, and memory/config status. Returns project slugs, paths, session counts, and whether they have memory or CLAUDE.md files.',
     {
       sortBy: z.enum(['recent', 'sessions', 'name']).optional().describe('Sort order: recent (last active), sessions (most sessions), name (alphabetical)'),
-      limit: z.number().optional().describe('Maximum number of projects to return'),
+      limit: z.number().int().min(1).max(1000).optional().describe('Maximum number of projects to return'),
     },
     async (params) => {
       const freshnessGuard = container.resolve<FreshnessGuard>(TOKENS.FreshnessGuard)

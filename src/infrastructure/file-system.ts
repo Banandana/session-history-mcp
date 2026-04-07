@@ -46,6 +46,19 @@ export async function* streamJsonlLines(
   path: string,
   startOffset: number = 0
 ): AsyncIterable<{ line: string; offset: number }> {
+  // Detect line ending style by reading the first chunk of the file.
+  // readline with crlfDelay: Infinity strips both \r\n and \n, so we
+  // can't tell from line content alone. Read a small buffer to check.
+  const detectBuf = Buffer.alloc(4096)
+  const fh = await import('node:fs/promises').then(m => m.open(path, 'r'))
+  try {
+    await fh.read(detectBuf, 0, 4096, 0)
+  } finally {
+    await fh.close()
+  }
+  const hasCrlf = detectBuf.includes(0x0d) // \r byte present → CRLF
+  const lineEndingSize = hasCrlf ? 2 : 1
+
   const stream = createReadStream(path, {
     start: startOffset,
     encoding: 'utf-8',
@@ -56,6 +69,6 @@ export async function* streamJsonlLines(
     if (line.trim()) {
       yield { line, offset }
     }
-    offset += Buffer.byteLength(line, 'utf-8') + 1
+    offset += Buffer.byteLength(line, 'utf-8') + lineEndingSize
   }
 }

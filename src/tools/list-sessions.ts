@@ -28,7 +28,7 @@ export function registerListSessions(server: McpServer): void {
       to: z.string().optional().describe('End date ISO 8601'),
       sortBy: z.enum(['recent', 'longest', 'most_turns', 'most_tokens', 'errors']).optional().describe('Sort order (default: recent)'),
       resolution: z.enum(['low', 'medium']).optional().describe('Response density: low (scanning) or medium (default, full card)'),
-      limit: z.number().optional().describe('Maximum number of sessions to return'),
+      limit: z.number().int().min(1).max(1000).optional().describe('Maximum number of sessions to return'),
       cursor: z.string().optional().describe('Pagination cursor'),
     },
     async (params) => {

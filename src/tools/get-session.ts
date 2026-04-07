@@ -5,8 +5,6 @@ import { TOKENS } from '../container/tokens'
 import type { FreshnessGuard } from '../services/freshness-guard'
 import type { ResponseFormatter } from '../services/response-formatter'
 import type { DatabaseConnection } from '../infrastructure/database'
-import type { AdapterRegistry } from '../services/adapter-registry'
-import type { NormalizedMessage } from '../types'
 import type { FallbackLlmClient } from '../services/llm-client'
 
 function formatTopTools(json: string): string {
@@ -182,13 +180,9 @@ export function registerGetSession(server: McpServer): void {
         // Intent-based LLM analysis
         if (params.intent) {
           try {
-            const registry = container.resolve<AdapterRegistry>(TOKENS.AdapterRegistry)
-            const messages: NormalizedMessage[] = []
-            for await (const msg of registry.getMessages(params.sessionId)) {
-              messages.push(msg)
-            }
+            const messageCount = session.message_count ?? session.total_turns ?? 0
 
-            if (messages.length >= 3) {
+            if (messageCount >= 3) {
               const llmClient = container.resolve<FallbackLlmClient>(TOKENS.LlmClient)
               const available = await llmClient.isAvailable()
               if (available) {

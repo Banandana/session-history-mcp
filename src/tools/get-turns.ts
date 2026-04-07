@@ -125,6 +125,10 @@ function messageToExpandedTurn(msg: NormalizedMessage, turnIndex: number, includ
 
 // --- Tool registration ---
 
+function validateSessionId(id: string): boolean {
+  return /^[a-f0-9-]{32,40}$/i.test(id)
+}
+
 interface SessionRow {
   readonly project_slug: string | null
 }
@@ -179,6 +183,12 @@ export function registerGetTurns(server: McpServer): void {
       const claudeDir = container.resolve<string>(TOKENS.ClaudeDataDir)
 
       const freshness = await freshnessGuard.ensureFresh()
+
+      if (!validateSessionId(params.sessionId)) {
+        return {
+          content: [{ type: 'text' as const, text: JSON.stringify({ error: `Invalid session ID format: ${params.sessionId}` }, null, 2) }],
+        }
+      }
 
       // Look up session to get project_slug
       const session = db.prepare(
