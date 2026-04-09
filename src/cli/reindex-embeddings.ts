@@ -52,6 +52,8 @@ async function main(): Promise<void> {
 
 main().catch((err: unknown) => {
   const message = err instanceof Error ? err.message : String(err)
+  const stack = err instanceof Error ? err.stack : undefined
   process.stderr.write(`reindex-embeddings failed: ${message}\n`)
+  if (stack) process.stderr.write(stack + '\n')
   process.exit(1)
 })

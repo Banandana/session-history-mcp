@@ -22,11 +22,19 @@ import { EmbeddingIndexer } from '../services/embedding-indexer'
 import { homedir } from 'node:os'
 import { join } from 'node:path'
 
+// Local LLM defaults. Override via LOCAL_LLM_URL / LOCAL_LLM_MODEL env vars
+// so the same repo works on any host without code changes.
+const DEFAULT_LOCAL_LLM_URL = 'http://localhost:30000/v1'
+const DEFAULT_LOCAL_LLM_MODEL = 'QuantTrio/MiniMax-M2.5-AWQ'
+
 export function registerInfrastructure(): void {
   const claudeDir = join(homedir(), '.claude')
+  const localLlmUrl = process.env.LOCAL_LLM_URL ?? DEFAULT_LOCAL_LLM_URL
+  const localLlmModel = process.env.LOCAL_LLM_MODEL ?? DEFAULT_LOCAL_LLM_MODEL
+
   container.register(TOKENS.ClaudeDataDir, { useValue: claudeDir })
-  container.register(TOKENS.LocalLlmUrl, { useValue: 'http://10.1.10.20:30000/v1' })
-  container.register(TOKENS.LocalLlmModel, { useValue: 'QuantTrio/MiniMax-M2.5-AWQ' })
+  container.register(TOKENS.LocalLlmUrl, { useValue: localLlmUrl })
+  container.register(TOKENS.LocalLlmModel, { useValue: localLlmModel })
 
   // Database
   const dbConn = new DatabaseConnection(claudeDir)
@@ -41,6 +49,9 @@ export function registerInfrastructure(): void {
   // Index & Search
   const db = dbConn.get()
   const indexManager = new IndexManager(db)
+  // Ensure schema/migrations run before any service that relies on post-v0
+  // columns (e.g. ContextAuditor.ensureIndexes references cost_usd from v3).
+  indexManager.ensureSchema()
   container.register(TOKENS.IndexManager, { useValue: indexManager })
 
   const searchIndex = new SearchIndex(db)
@@ -50,8 +61,6 @@ export function registerInfrastructure(): void {
   container.register(TOKENS.TurnIndexer, { useValue: turnIndexer })
 
   // LLM — legacy local client + new fallback client (local-first, Anthropic as fallback)
-  const localLlmUrl = 'http://10.1.10.20:30000/v1'
-  const localLlmModel = 'QuantTrio/MiniMax-M2.5-AWQ'
   const llmClient = new LocalLlmClient(localLlmUrl, localLlmModel)
   container.register(TOKENS.LocalLlmClient, { useValue: llmClient })
   const fallbackLlmClient = createLlmClient(localLlmUrl, localLlmModel)
