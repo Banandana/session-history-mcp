@@ -11,13 +11,14 @@ import { TokenBudgetManager } from '../services/token-budget-manager'
 import { PaginationManager } from '../services/pagination-manager'
 
 import { LocalLlmClient } from '../services/local-llm-client'
-import { createLlmClient } from '../services/llm-client'
+import { createLlmClient, OpenAiLlmClient } from '../services/llm-client'
 import { ProjectResolver } from '../services/project-resolver'
 import { Analyzer } from '../services/analyzer'
 import { ResponseFormatter } from '../services/response-formatter'
 import { TurnIndexer } from '../services/turn-indexer'
 import { PhaseClusterer } from '../services/phase-clusterer'
 import { ContextAuditor } from '../services/context-auditor'
+import { EmbeddingIndexer } from '../services/embedding-indexer'
 import { homedir } from 'node:os'
 import { join } from 'node:path'
 
@@ -56,9 +57,9 @@ export function registerInfrastructure(): void {
   const fallbackLlmClient = createLlmClient(localLlmUrl, localLlmModel)
   container.register(TOKENS.LlmClient, { useValue: fallbackLlmClient })
 
-  // Freshness Guard
-  const freshnessGuard = new FreshnessGuard(registry, indexManager, claudeDir, db, llmClient, turnIndexer)
-  container.register(TOKENS.FreshnessGuard, { useValue: freshnessGuard })
+  // Freshness Guard — embedding indexer is wired below after construction
+  // so the guard can fire-and-forget embedding runs alongside summarization.
+  let freshnessGuard: FreshnessGuard
 
   // Services
   const tokenBudget = new TokenBudgetManager()
@@ -82,6 +83,36 @@ export function registerInfrastructure(): void {
   const contextAuditor = new ContextAuditor(db)
   contextAuditor.ensureIndexes()
   container.register(TOKENS.ContextAuditor, { useValue: contextAuditor })
+
+  // Embedding indexer — opt-in via VLLM_EMBEDDING_MODEL env var. When the
+  // env var is unset, the token is registered as `null` and semantic_search
+  // returns an informative error telling the user how to enable it.
+  const embeddingModel = process.env.VLLM_EMBEDDING_MODEL
+  let embeddingIndexer: EmbeddingIndexer | null = null
+  if (embeddingModel) {
+    const embeddingDim = Number(process.env.VLLM_EMBEDDING_DIM ?? '1024')
+    const embeddingBaseUrl = process.env.VLLM_EMBEDDING_URL ?? localLlmUrl
+    const embeddingClient = new OpenAiLlmClient(localLlmUrl, localLlmModel, {
+      embeddingModel,
+      embeddingDim,
+      embeddingBaseUrl,
+    })
+    embeddingIndexer = new EmbeddingIndexer(db, embeddingClient, embeddingDim)
+  }
+  container.register(TOKENS.EmbeddingIndexer, { useValue: embeddingIndexer })
+
+  // Now build the FreshnessGuard with the embedding indexer attached so
+  // post-sync embedding runs fire-and-forget alongside summarization.
+  freshnessGuard = new FreshnessGuard(
+    registry,
+    indexManager,
+    claudeDir,
+    db,
+    llmClient,
+    turnIndexer,
+    embeddingIndexer,
+  )
+  container.register(TOKENS.FreshnessGuard, { useValue: freshnessGuard })
 }
 
 export function registerAll(): void {

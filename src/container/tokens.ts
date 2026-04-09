@@ -18,4 +18,5 @@ export const TOKENS = {
   TurnIndexer: Symbol('TurnIndexer'),
   PhaseClusterer: Symbol('PhaseClusterer'),
   ContextAuditor: Symbol('ContextAuditor'),
+  EmbeddingIndexer: Symbol('EmbeddingIndexer'),
 } as const

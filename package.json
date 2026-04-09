@@ -5,6 +5,7 @@
   "scripts": {
     "dev": "tsx --watch src/server.ts",
     "start": "tsx src/server.ts",
+    "sync": "tsx src/cli/sync.ts",
     "test": "vitest run",
     "test:watch": "vitest"
   },
@@ -15,6 +16,7 @@
     "@modelcontextprotocol/sdk": "^1.29.0",
     "better-sqlite3": "^12.8.0",
     "reflect-metadata": "^0.2.2",
+    "sqlite-vec": "^0.1.9",
     "tsyringe": "^4.10.0",
     "zod": "^4.3.6"
   },

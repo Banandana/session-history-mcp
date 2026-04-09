@@ -4,6 +4,7 @@ import type { IndexManager } from './index-manager'
 import type { LocalLlmClient } from './local-llm-client'
 import type { IndexState, NormalizedMessage, SessionMeta } from '../types'
 import type { TurnIndexer } from './turn-indexer'
+import type { EmbeddingIndexer } from './embedding-indexer'
 import { generateTopic } from './topic-generator'
 
 function formatToolCounts(json: string): string {
@@ -30,6 +31,7 @@ export class FreshnessGuard {
     db: Database.Database,
     private readonly llmClient?: LocalLlmClient,
     private readonly turnIndexer?: TurnIndexer,
+    private readonly embeddingIndexer?: EmbeddingIndexer | null,
   ) {
     this.db = db
   }
@@ -68,6 +70,14 @@ export class FreshnessGuard {
 
     // 5. Fire-and-forget LLM summarization — must not block sync
     void this.generateSummaries().catch(() => { /* summarization failure is non-critical */ })
+
+    // 5b. Fire-and-forget embedding indexing — only runs if an embedding
+    // backend was configured via VLLM_EMBEDDING_MODEL.
+    if (this.embeddingIndexer) {
+      void this.embeddingIndexer
+        .indexPending()
+        .catch(() => { /* embedding failure is non-critical */ })
+    }
 
     // 6. Return metadata
     const sessionCount = (this.db.prepare('SELECT COUNT(*) as cnt FROM sessions').get() as { cnt: number }).cnt

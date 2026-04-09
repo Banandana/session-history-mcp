@@ -80,23 +80,59 @@ Add to `~/.claude/settings.local.json` under `mcpServers`:
 }
 ```
 
-### Available Tools (13)
+### Stop-hook auto-indexing (optional)
+
+To keep the index warm without waiting for the next MCP tool call, wire
+`src/cli/sync.ts` as a Stop hook in `~/.claude/settings.json`:
+
+```json
+{
+  "hooks": {
+    "Stop": [{
+      "matcher": "",
+      "hooks": [{
+        "type": "command",
+        "command": "npx tsx /home/kitty/Desktop/claude-session-mcp/src/cli/sync.ts"
+      }]
+    }]
+  }
+}
+```
+
+The CLI is idempotent and fast (~100ms) when nothing changed. It reuses the
+same `FreshnessGuard` pipeline as MCP tool calls.
+
+### Available Tools (15)
 
 | Tool | Purpose |
 |------|---------|
 | `list_projects` | All known projects with metadata |
 | `get_project` | Project detail — CLAUDE.md, settings, memory, stats |
-| `list_sessions` | Sessions filtered by project/date/branch/tokens/cost/cache — includes title, cost, mode, tags, models used |
-| `get_session` | Session detail — metadata, turns, files, subagents, PR links, cache stats, context collapses, token curve |
+| `list_sessions` | Sessions filtered by project/date/branch/tokens/cost/cache/toolNames — includes title, cost, mode, tags, models used |
+| `get_session` | Session detail — metadata, turns, files, subagents, PR links, cache stats, context collapses, token curve (opt-in via `sections`) |
 | `get_conversation` | Session overview — phase-clustered activity timeline with cost and cache data |
-| `query_turns` | Search turns by tool name, error status, text pattern, time range |
+| `query_turns` | Search turns by tool name, error status, text pattern, time range (supports `compact` mode) |
 | `get_turns` | Full content for specific turns — tool inputs, outputs, text, thinking blocks (opt-in), per-turn model and cache tokens |
-| `search` | FTS5 full-text search across all sessions — indexes full message content including tool inputs/outputs |
+| `search` | FTS5 full-text search across all sessions — indexes full message content, hyphen-safe, returns role/toolNames/turnIndex |
+| `semantic_search` | Vector KNN search via sqlite-vec — finds paraphrased matches FTS misses. Requires VLLM_EMBEDDING_MODEL env var |
 | `get_changes` | File operations tracked across sessions |
 | `get_memory` | Cross-project memory access |
 | `analyze` | Pattern discovery — errors, corrections, tool failures, cache efficiency, model usage |
 | `deep_analyze` | Send entire session to Opus 1M for comprehensive quality analysis (requires ANTHROPIC_API_KEY) |
 | `context_audit` | Context usage auditing — cost, token attribution, cache, collapses, session profiles |
+| `claude_md_effectiveness` | Before/after metric deltas around CLAUDE.md edit events — measures whether agent self-corrections worked |
+
+### Semantic Search Configuration
+
+`semantic_search` is opt-in. Set these on the MCP server environment:
+
+- `VLLM_EMBEDDING_MODEL` (required) — e.g., `BAAI/bge-m3`
+- `VLLM_EMBEDDING_URL` (optional) — defaults to the chat base URL
+- `VLLM_EMBEDDING_DIM` (optional) — defaults to 1024; must match the model
+
+Indexing runs fire-and-forget after each `ensureFresh()` cycle, bounded to 500
+messages per cycle. The `message_embeddings` vec0 table is created lazily on
+first use and will automatically drop+rebuild on dimension mismatch.
 
 ## Git Rules
 

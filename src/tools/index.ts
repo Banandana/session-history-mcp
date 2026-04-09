@@ -12,6 +12,8 @@ import { registerGetTurns } from './get-turns'
 import { registerQueryTurns } from './query-turns'
 import { registerDeepAnalyze } from './deep-analyze'
 import { registerContextAudit } from './context-audit'
+import { registerClaudeMdEffectiveness } from './claude-md-effectiveness'
+import { registerSemanticSearch } from './semantic-search'
 
 export function registerTools(server: McpServer): void {
   registerListProjects(server)
@@ -27,4 +29,6 @@ export function registerTools(server: McpServer): void {
   registerQueryTurns(server)
   registerDeepAnalyze(server)
   registerContextAudit(server)
+  registerClaudeMdEffectiveness(server)
+  registerSemanticSearch(server)
 }
