@@ -21,14 +21,56 @@ function formatFiles(json: string): string {
   } catch { return '' }
 }
 
+const SECTION_NAMES = [
+  'metadata',
+  'toolCounts',
+  'filesChanged',
+  'cacheTokens',
+  'tokenAccumulation',
+  'prLinks',
+  'subagents',
+  'contextCollapses',
+  'tokenCurve',
+] as const
+
+type SectionName = (typeof SECTION_NAMES)[number]
+
+// Default section sets per detail level. tokenCurve is opt-in because it
+// produces one entry per message — a 1000-turn session would otherwise
+// overflow the MCP response budget.
+const METADATA_SECTIONS: readonly SectionName[] = [
+  'metadata',
+  'toolCounts',
+  'filesChanged',
+  'cacheTokens',
+  'tokenAccumulation',
+  'prLinks',
+  'subagents',
+]
+const FULL_SECTIONS: readonly SectionName[] = [
+  ...METADATA_SECTIONS,
+  'contextCollapses',
+]
+
+function resolveSections(
+  detail: 'summary' | 'metadata' | 'full',
+  explicit: readonly SectionName[] | undefined,
+): ReadonlySet<SectionName> {
+  if (explicit && explicit.length > 0) return new Set(explicit)
+  if (detail === 'full') return new Set(FULL_SECTIONS)
+  if (detail === 'metadata') return new Set(METADATA_SECTIONS)
+  return new Set()
+}
+
 export function registerGetSession(server: McpServer): void {
   server.tool(
     'get_session',
-    'Get details for a specific session by ID. With detail=metadata or detail=full, includes turn count, file changes, and subagent information.',
+    'Get details for a specific session by ID. Use `detail` for preset levels (summary | metadata | full) or `sections` for fine-grained control. `tokenCurve` is opt-in only via `sections` because it grows with turn count and can overflow the response on long sessions.',
     {
       sessionId: z.string().describe('Session ID (UUID)'),
-      detail: z.enum(['summary', 'metadata', 'full']).optional().describe('Detail level'),
-      intent: z.string().max(500).optional().describe('Free-text analysis intent — triggers live LLM analysis (detail=full only)'),
+      detail: z.enum(['summary', 'metadata', 'full']).optional().describe('Detail level preset'),
+      sections: z.array(z.enum(SECTION_NAMES)).optional().describe('Explicit section list — overrides detail. Sections: metadata, toolCounts, filesChanged, cacheTokens, tokenAccumulation, prLinks, subagents, contextCollapses, tokenCurve. Base summary fields are always returned.'),
+      intent: z.string().max(500).optional().describe('Free-text analysis intent — triggers live LLM analysis (requires detail=full or sections)'),
     },
     async (params) => {
       const freshnessGuard = container.resolve<FreshnessGuard>(TOKENS.FreshnessGuard)
@@ -90,6 +132,8 @@ export function registerGetSession(server: McpServer): void {
       }
 
       const detail = params.detail ?? 'summary'
+      const sections = resolveSections(detail, params.sections as readonly SectionName[] | undefined)
+      const has = (s: SectionName): boolean => sections.has(s)
 
       // summary (default) — compact card matching list_sessions fields
       const title = session.custom_title ?? session.ai_title
@@ -115,15 +159,24 @@ export function registerGetSession(server: McpServer): void {
         modelsUsed: session.models_used ? JSON.parse(session.models_used) as unknown : null,
       }
 
-      if (detail === 'metadata' || detail === 'full') {
+      if (has('metadata')) {
         result.messageCount = session.message_count
         result.correctionCount = session.correction_count
         result.subagentCount = session.subagent_count
-        result.toolCounts = session.tool_counts ? JSON.parse(session.tool_counts) as unknown : null
-        result.filesChanged = session.files_changed ? JSON.parse(session.files_changed) as unknown : null
         result.hasThinking = session.has_thinking === 1
         result.worktreeBranch = session.worktree_branch
         result.speculationTimeSavedMs = session.speculation_time_saved_ms
+      }
+
+      if (has('toolCounts')) {
+        result.toolCounts = session.tool_counts ? JSON.parse(session.tool_counts) as unknown : null
+      }
+
+      if (has('filesChanged')) {
+        result.filesChanged = session.files_changed ? JSON.parse(session.files_changed) as unknown : null
+      }
+
+      if (has('cacheTokens')) {
         const cacheRead = session.total_cache_read_tokens ?? 0
         const cacheCreation = session.total_cache_creation_tokens ?? 0
         result.cacheTokens = {
@@ -133,7 +186,9 @@ export function registerGetSession(server: McpServer): void {
             (cacheRead / Math.max(cacheRead + cacheCreation, 1)) * 1000
           ) / 10,
         }
+      }
 
+      if (has('tokenAccumulation')) {
         const peakMsg = db.prepare(
           'SELECT MAX(token_count) as peak FROM messages WHERE session_id = ?'
         ).get(params.sessionId) as { peak: number | null }
@@ -145,8 +200,9 @@ export function registerGetSession(server: McpServer): void {
             ? Math.round(session.total_tokens / session.total_turns)
             : 0,
         }
+      }
 
-        // PR links
+      if (has('prLinks')) {
         const prLinks = db.prepare(
           'SELECT pr_number, pr_url, pr_repository, timestamp FROM pr_links WHERE session_id = ?'
         ).all(params.sessionId) as Array<{
@@ -163,14 +219,19 @@ export function registerGetSession(server: McpServer): void {
             timestamp: pr.timestamp,
           }))
         }
+      }
 
-        // Context collapses count
+      // contextCollapseCount is always cheap (single COUNT query) — surface
+      // whenever metadata is requested so callers know if the expensive
+      // contextCollapses enumeration is worth requesting.
+      if (has('metadata') || has('contextCollapses')) {
         const collapseCount = db.prepare(
           'SELECT COUNT(*) as cnt FROM context_collapses WHERE session_id = ?'
         ).get(params.sessionId) as { cnt: number }
         result.contextCollapseCount = collapseCount.cnt
+      }
 
-        // Subagents from subagents table
+      if (has('subagents')) {
         const subagents = db.prepare(
           'SELECT id, agent_type, description, total_tokens, total_tools, duration_ms, model FROM subagents WHERE session_id = ?'
         ).all(params.sessionId) as Array<{
@@ -193,8 +254,7 @@ export function registerGetSession(server: McpServer): void {
         }))
       }
 
-      if (detail === 'full') {
-        // Enumerate collapses (not just count)
+      if (has('contextCollapses')) {
         const collapses = db.prepare(
           'SELECT collapse_id, summary, first_archived_uuid, last_archived_uuid FROM context_collapses WHERE session_id = ?'
         ).all(params.sessionId) as Array<{
@@ -207,19 +267,25 @@ export function registerGetSession(server: McpServer): void {
           firstArchivedUuid: c.first_archived_uuid,
           lastArchivedUuid: c.last_archived_uuid,
         }))
+      }
 
-        // Token accumulation curve
+      if (has('tokenCurve')) {
+        // Token accumulation curve — one entry per message. Opt-in only
+        // because long sessions produce hundreds of entries.
         const msgs = db.prepare(
           'SELECT token_count FROM messages WHERE session_id = ? ORDER BY timestamp'
         ).all(params.sessionId) as Array<{ token_count: number }>
 
-        let cumulative = 0
-        const collapseCount = collapses.length
-        const totalMsgs = msgs.length
         // Interpolate collapse positions evenly across the session
+        const collapseCountForCurve = db.prepare(
+          'SELECT COUNT(*) as cnt FROM context_collapses WHERE session_id = ?'
+        ).get(params.sessionId) as { cnt: number }
+
+        let cumulative = 0
+        const totalMsgs = msgs.length
         const collapsePositions = new Set(
-          Array.from({ length: collapseCount }, (_, i) =>
-            Math.round((totalMsgs / (collapseCount + 1)) * (i + 1))
+          Array.from({ length: collapseCountForCurve.cnt }, (_, i) =>
+            Math.round((totalMsgs / (collapseCountForCurve.cnt + 1)) * (i + 1))
           )
         )
 
@@ -231,7 +297,9 @@ export function registerGetSession(server: McpServer): void {
             isCollapse: collapsePositions.has(i),
           }
         })
+      }
 
+      if (detail === 'full' || (params.sections && params.sections.length > 0)) {
         // Intent-based LLM analysis
         if (params.intent) {
           try {

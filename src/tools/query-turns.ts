@@ -391,6 +391,7 @@ export function registerQueryTurns(server: McpServer): void {
       }).optional().describe('Turn index range (single-session only, requires sessionId)'),
       limit: z.number().int().min(1).max(1000).optional().describe('Max results (default 50)'),
       cursor: z.string().optional().describe('Offset-based pagination cursor'),
+      compact: z.boolean().optional().describe('If true, return only {sessionId, turnIndex, turnId, timestamp} per result — ~5x smaller than full TurnReference. Use when you plan to follow up with get_turns for interesting results.'),
     },
     async (params) => {
       const freshnessGuard = container.resolve<FreshnessGuard>(TOKENS.FreshnessGuard)
@@ -462,9 +463,18 @@ export function registerQueryTurns(server: McpServer): void {
       const hasMore = offset + results.length < total
       const nextCursor = hasMore ? String(offset + results.length) : undefined
 
+      const shapedResults = params.compact
+        ? results.map(r => ({
+            sessionId: r.sessionId,
+            turnIndex: r.turnIndex,
+            turnId: r.turnId,
+            timestamp: r.timestamp,
+          }))
+        : results
+
       const meta = formatter.formatMeta(freshness)
       const response = formatter.format(
-        { results, total },
+        { results: shapedResults, total },
         meta,
         hasMore ? { cursor: nextCursor!, hasMore: true, totalEstimate: total } : undefined,
       )

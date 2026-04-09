@@ -37,6 +37,7 @@ export function registerListSessions(server: McpServer): void {
       maxCost: z.number().optional().describe('Maximum cost in USD'),
       minCacheHitRatio: z.number().min(0).max(100).optional().describe('Minimum cache hit ratio (0-100)'),
       maxCacheHitRatio: z.number().min(0).max(100).optional().describe('Maximum cache hit ratio (0-100)'),
+      toolNames: z.array(z.string()).optional().describe('Only sessions that used at least one of these tools (e.g., ["Agent", "WebFetch"]). Matched against the per-session tool_counts map.'),
       cursor: z.string().optional().describe('Pagination cursor'),
     },
     async (params) => {
@@ -97,6 +98,15 @@ export function registerListSessions(server: McpServer): void {
       if (params.maxCacheHitRatio != null) {
         conditions.push('(CAST(COALESCE(total_cache_read_tokens, 0) AS REAL) * 100.0 / CASE WHEN (COALESCE(total_cache_read_tokens, 0) + COALESCE(total_cache_creation_tokens, 0)) = 0 THEN 1 ELSE (COALESCE(total_cache_read_tokens, 0) + COALESCE(total_cache_creation_tokens, 0)) END) <= ?')
         sqlParams.push(params.maxCacheHitRatio)
+      }
+      if (params.toolNames && params.toolNames.length > 0) {
+        // tool_counts is a JSON object keyed by tool name — match sessions
+        // that have any of the requested tools as a key with a positive count.
+        const toolConditions = params.toolNames.map(() =>
+          `(tool_counts IS NOT NULL AND json_extract(tool_counts, '$.' || ?) > 0)`
+        )
+        conditions.push(`(${toolConditions.join(' OR ')})`)
+        for (const t of params.toolNames) sqlParams.push(t)
       }
 
       const whereClause = conditions.length > 0 ? `WHERE ${conditions.join(' AND ')}` : ''

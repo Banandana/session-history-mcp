@@ -5,7 +5,48 @@ import { mkdtempSync, rmSync } from 'node:fs'
 import { join } from 'node:path'
 import { tmpdir } from 'node:os'
 import { IndexManager } from './index-manager'
-import { SearchIndex } from './search-index'
+import { SearchIndex, sanitizeFtsQuery } from './search-index'
+
+describe('sanitizeFtsQuery', () => {
+  it('wraps hyphenated terms as phrase literals', () => {
+    expect(sanitizeFtsQuery('project-tracker')).toBe('"project-tracker"')
+  })
+
+  it('preserves safe bare words', () => {
+    expect(sanitizeFtsQuery('authentication')).toBe('authentication')
+    expect(sanitizeFtsQuery('foo_bar')).toBe('foo_bar')
+    expect(sanitizeFtsQuery('prefix*')).toBe('prefix*')
+  })
+
+  it('preserves boolean operators and parentheses', () => {
+    expect(sanitizeFtsQuery('foo AND bar'))
+      .toBe('foo AND bar')
+    expect(sanitizeFtsQuery('(foo OR bar) AND baz'))
+      .toBe('(foo OR bar) AND baz')
+    expect(sanitizeFtsQuery('foo NOT bar')).toBe('foo NOT bar')
+  })
+
+  it('preserves explicit quoted phrases', () => {
+    expect(sanitizeFtsQuery('"hello world"')).toBe('"hello world"')
+  })
+
+  it('quotes mixed-punctuation tokens', () => {
+    expect(sanitizeFtsQuery('src/foo.ts')).toBe('"src/foo.ts"')
+    expect(sanitizeFtsQuery('subagent_type:project')).toBe('"subagent_type:project"')
+  })
+
+  it('handles compound queries with hyphens and operators', () => {
+    expect(sanitizeFtsQuery('"project-tracker" AND jira'))
+      .toBe('"project-tracker" AND jira')
+    expect(sanitizeFtsQuery('smoke-tester Sentry'))
+      .toBe('"smoke-tester" Sentry')
+  })
+
+  it('returns empty string for empty input', () => {
+    expect(sanitizeFtsQuery('')).toBe('')
+    expect(sanitizeFtsQuery('   ')).toBe('')
+  })
+})
 
 describe('SearchIndex', () => {
   let tempDir: string
@@ -154,5 +195,20 @@ describe('SearchIndex', () => {
     const results = searchIndex.search('authentication')
     expect(results.length).toBeGreaterThan(0)
     expect(results[0].projectSlug).toBe('project-alpha')
+  })
+
+  it('does not throw on hyphenated terms (regression: FTS5 column-subtraction)', () => {
+    // Before the sanitizer, `project-tracker` parsed as `project NOT tracker`
+    // and errored with `no such column: tracker`.
+    expect(() => searchIndex.search('project-tracker')).not.toThrow()
+    expect(() => searchIndex.search('smoke-tester Sentry')).not.toThrow()
+    expect(() => searchIndex.search('src/foo.ts')).not.toThrow()
+  })
+
+  it('returns role and toolNames in results', () => {
+    const results = searchIndex.search('authentication')
+    expect(results.length).toBeGreaterThan(0)
+    expect(results[0].role).toBe('user')
+    expect(Array.isArray(results[0].toolNames)).toBe(true)
   })
 })

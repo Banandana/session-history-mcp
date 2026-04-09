@@ -74,7 +74,7 @@ Be direct and specific. Reference turn numbers when citing examples. Don't softe
 export function registerDeepAnalyze(server: McpServer): void {
   server.tool(
     'deep_analyze',
-    'Send an entire session to Opus for comprehensive analysis. Expensive — uses Anthropic API with full session context. Returns quality assessment, behavioral patterns, token efficiency, and actionable recommendations.',
+    'Send an entire session to Opus for comprehensive analysis. Expensive — uses Anthropic API with full session context. Returns quality assessment, behavioral patterns, token efficiency, and actionable recommendations. Rate limits and API errors surface as real MCP errors (isError: true); callers should handle 429 responses with backoff.',
     {
       sessionId: z.string().describe('Session ID to analyze'),
       focus: z.string().max(500).optional().describe('Optional focus area for the analysis (e.g., "error handling patterns", "tool selection decisions")'),
@@ -175,26 +175,24 @@ export function registerDeepAnalyze(server: McpServer): void {
 
       const maxResponseTokens = params.maxResponseTokens ?? 16384
 
-      try {
-        const analysis = await anthropic.analyze(systemPrompt, userContent, maxResponseTokens)
+      // Rate limits, auth failures, and model errors must surface as real
+      // MCP errors (isError: true) so callers can distinguish them from a
+      // successful analysis. Rethrow so the SDK marks the response as an
+      // error rather than wrapping it in a success payload.
+      const analysis = await anthropic.analyze(systemPrompt, userContent, maxResponseTokens)
 
-        const data = {
-          sessionId: params.sessionId,
-          title: session.custom_title ?? session.ai_title ?? session.topic,
-          analyzedTurns: messages.length,
-          focus: params.focus ?? null,
-          model: anthropic.label,
-          analysis,
-        }
+      const data = {
+        sessionId: params.sessionId,
+        title: session.custom_title ?? session.ai_title ?? session.topic,
+        analyzedTurns: messages.length,
+        focus: params.focus ?? null,
+        model: anthropic.label,
+        analysis,
+      }
 
-        const meta = formatter.formatMeta(freshness)
-        return {
-          content: [{ type: 'text' as const, text: JSON.stringify(formatter.format(data, meta), null, 2) }],
-        }
-      } catch (err) {
-        return {
-          content: [{ type: 'text' as const, text: JSON.stringify({ error: `Analysis failed: ${(err as Error).message}` }, null, 2) }],
-        }
+      const meta = formatter.formatMeta(freshness)
+      return {
+        content: [{ type: 'text' as const, text: JSON.stringify(formatter.format(data, meta), null, 2) }],
       }
     }
   )
