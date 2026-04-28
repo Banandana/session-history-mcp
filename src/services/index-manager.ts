@@ -134,6 +134,54 @@ export class IndexManager {
       })()
       this.db.pragma('user_version = 4')
     }
+    if (userVersion < 5) {
+      this.db.transaction(() => {
+        this.migrateToV5()
+      })()
+      this.db.pragma('user_version = 5')
+    }
+  }
+
+  private migrateToV5(): void {
+    // Tool-invocation log: every MCP call recorded as a raw row.
+    // No result content stored — just status and byte size.
+    this.db.exec(`
+      CREATE TABLE IF NOT EXISTS tool_invocations (
+        id INTEGER PRIMARY KEY AUTOINCREMENT,
+        tool_name TEXT NOT NULL,
+        params_json TEXT NOT NULL,
+        params_hash TEXT NOT NULL,
+        called_at INTEGER NOT NULL,
+        duration_ms INTEGER,
+        result_status TEXT NOT NULL,
+        result_size INTEGER,
+        caller_session TEXT,
+        project_path TEXT
+      );
+
+      CREATE INDEX IF NOT EXISTS idx_tool_invocations_tool_hash_time
+        ON tool_invocations(tool_name, params_hash, called_at DESC);
+      CREATE INDEX IF NOT EXISTS idx_tool_invocations_project_time
+        ON tool_invocations(project_path, called_at DESC);
+      CREATE INDEX IF NOT EXISTS idx_tool_invocations_called_at
+        ON tool_invocations(called_at DESC);
+
+      CREATE TABLE IF NOT EXISTS audit_watermarks (
+        tool_name TEXT NOT NULL,
+        params_hash TEXT NOT NULL,
+        params_canonical_json TEXT NOT NULL,
+        project_path TEXT,
+        first_called_at INTEGER NOT NULL,
+        last_called_at INTEGER NOT NULL,
+        call_count INTEGER NOT NULL,
+        PRIMARY KEY (tool_name, params_hash)
+      );
+
+      CREATE INDEX IF NOT EXISTS idx_audit_watermarks_project_recent
+        ON audit_watermarks(project_path, last_called_at DESC);
+      CREATE INDEX IF NOT EXISTS idx_audit_watermarks_tool_recent
+        ON audit_watermarks(tool_name, last_called_at DESC);
+    `)
   }
 
   private migrateToV2(): void {

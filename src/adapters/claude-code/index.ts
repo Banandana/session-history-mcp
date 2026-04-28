@@ -96,7 +96,7 @@ export class ClaudeCodeAdapter implements SessionAdapter {
     return this.configReader.getSessionCost(projectSlug, sessionId)
   }
 
-  resolveProject(path: string): ProjectMeta | undefined {
+  async resolveProject(path: string): Promise<ProjectMeta | undefined> {
     return this.discovery.resolveProject(path)
   }
 

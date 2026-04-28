@@ -37,6 +37,6 @@ export interface SessionAdapter {
   getMemory(project?: string): AsyncIterable<MemoryEntry>
   getSessionMetadata(sessionId: string): Promise<SessionMetadataResult | undefined>
   getSessionCost(projectSlug: string, sessionId: string): Promise<number | undefined>
-  resolveProject(path: string): ProjectMeta | undefined
+  resolveProject(path: string): Promise<ProjectMeta | undefined>
   checkFreshness(known: IndexState): Promise<FreshnessResult>
 }

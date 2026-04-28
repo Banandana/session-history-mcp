@@ -129,20 +129,18 @@ describe('ClaudeCodeAdapter', () => {
   })
 
   describe('resolveProject', () => {
-    it('returns undefined before project cache is built', () => {
+    it('lazy-builds the cache on first call (cold start)', async () => {
       // Create a fresh adapter with no cache built yet
       const fresh = new ClaudeCodeAdapter(FIXTURES)
-      const result = fresh.resolveProject('/home/test/project/alpha')
-      expect(result).toBeUndefined()
+      // Real cwd from JSONL is /home/test/project-alpha (note hyphen, not slash)
+      const result = await fresh.resolveProject('/home/test/project-alpha')
+      expect(result?.slug).toBe('-home-test-project-alpha')
     })
 
-    it('resolves after discoverProjects builds cache', async () => {
-      // discoverProjects builds the cache
+    it('resolves correctly after warm cache', async () => {
       await collect<ProjectMeta>(adapter.discoverProjects())
-      const result = adapter.resolveProject('/home/test/project/alpha')
-      // The slug-to-path heuristic is lossy, so this may or may not resolve
-      // depending on the exact path format. We just verify it doesn't throw.
-      expect(result === undefined || result.slug === '-home-test-project-alpha').toBe(true)
+      const result = await adapter.resolveProject('/home/test/project-alpha/src')
+      expect(result?.slug).toBe('-home-test-project-alpha')
     })
   })
 

@@ -102,7 +102,7 @@ To keep the index warm without waiting for the next MCP tool call, wire
 The CLI is idempotent and fast (~100ms) when nothing changed. It reuses the
 same `FreshnessGuard` pipeline as MCP tool calls.
 
-### Available Tools (15)
+### Available Tools (16)
 
 | Tool | Purpose |
 |------|---------|
@@ -121,6 +121,7 @@ same `FreshnessGuard` pipeline as MCP tool calls.
 | `deep_analyze` | Send entire session to Opus 1M for comprehensive quality analysis (requires ANTHROPIC_API_KEY) |
 | `context_audit` | Context usage auditing — cost, token attribution, cache, collapses, session profiles |
 | `claude_md_effectiveness` | Before/after metric deltas around CLAUDE.md edit events — measures whether agent self-corrections worked |
+| `get_audit_history` | "When did I last audit X?" — returns last successful invocation per (tool, canonical params) so agents can fill the gap with `since: lastCalledAt`. Includes a `followUp` block. Mode `raw` returns the unfiltered call log |
 
 ### Semantic Search Configuration
 
@@ -218,6 +219,40 @@ All metrics support `detail=summary|full`, temporal `groupBy`, and filters (proj
 `get_session` enhanced with: `cacheTokens.hitRatio` and `tokenAccumulation` at metadata level; `contextCollapses` array and `tokenCurve` at full level.
 
 Phase 1 limitation: `token_count` = input+output combined; true context utilization % deferred to Phase 2 when `input_tokens`/`output_tokens` are stored separately.
+
+## Tool-Invocation Log (2026-04-27)
+
+V5 migration adds two tables for "when did I last audit X" follow-up:
+
+- **`tool_invocations`** — raw firehose, one row per MCP call. Stores
+  `tool_name`, `params_json`, `params_hash`, `called_at`, `duration_ms`,
+  `result_status` ('ok'|'error'), `result_size`, `caller_session`,
+  `project_path`. No result content stored, only byte size.
+- **`audit_watermarks`** — materialized view, one row per
+  (tool_name, params_hash). Upserted on every successful call with a
+  registered normalizer. Carries `first_called_at`, `last_called_at`,
+  `call_count`, `params_canonical_json`.
+
+Recording is automatic via `instrumentDispatch()` in `server.ts` — wraps
+`server.tool` so every handler is timed and logged. Logging failures are
+swallowed (stderr only) so telemetry can never break a real call.
+
+**Normalization rule**: shape, not time anchor. Two calls with the same
+`metric` + `project` collapse to one watermark even if their `from`/`to`
+date values differ. The temporal *kind* (rolling vs pinned range) IS part
+of the shape — switching from `days: 7` to `since: "2026-04-20"` creates
+a separate audit. Each audit-style tool has a normalizer in
+`services/param-normalizers/`. Tools without a normalizer (lookups like
+`list_projects`, `get_session`) are still logged raw but skip the
+watermark — that's the cleanest opt-out.
+
+**Watermarks fire only on success.** Failed calls land in
+`tool_invocations` with `result_status='error'` but do not bump the
+watermark. The watermark means "last successful audit."
+
+`get_project` now includes a `recentAudits` block (top 10 most recently
+touched audits for the project, with denylist applied) so agents see
+what's been audited without having to call `get_audit_history` first.
 
 ## Recently Fixed (2026-03-31)
 

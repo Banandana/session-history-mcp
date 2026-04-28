@@ -6,6 +6,7 @@ import type { FreshnessGuard } from '../services/freshness-guard'
 import type { AdapterRegistry } from '../services/adapter-registry'
 import type { ProjectResolver } from '../services/project-resolver'
 import type { ResponseFormatter } from '../services/response-formatter'
+import type { AuditHistoryService } from '../services/audit-history'
 import type { ProjectMeta, MemoryEntry } from '../types'
 import { ConfigReader } from '../adapters/claude-code/config-reader'
 import { MemoryReader } from '../adapters/claude-code/memory-reader'
@@ -24,6 +25,7 @@ export function registerGetProject(server: McpServer): void {
       const registry = container.resolve<AdapterRegistry>(TOKENS.AdapterRegistry)
       const projectResolver = container.resolve<ProjectResolver>(TOKENS.ProjectResolver)
       const formatter = container.resolve<ResponseFormatter>(TOKENS.ResponseFormatter)
+      const auditHistory = container.resolve<AuditHistoryService>(TOKENS.AuditHistoryService)
 
       const freshness = await freshnessGuard.ensureFresh()
 
@@ -55,6 +57,8 @@ export function registerGetProject(server: McpServer): void {
 
       const detail = params.detail ?? 'summary'
 
+      const recentAudits = auditHistory.recentForProject([slug, foundProject.path], 10)
+
       if (detail === 'full') {
         const claudeDir = container.resolve<string>(TOKENS.ClaudeDataDir)
         const configReader = new ConfigReader(claudeDir)
@@ -80,6 +84,7 @@ export function registerGetProject(server: McpServer): void {
           settings,
           memoryEntries,
           sessions,
+          recentAudits,
         }
 
         const meta = formatter.formatMeta(freshness)
@@ -90,7 +95,7 @@ export function registerGetProject(server: McpServer): void {
       }
 
       const meta = formatter.formatMeta(freshness)
-      const response = formatter.format(foundProject, meta)
+      const response = formatter.format({ ...foundProject, recentAudits }, meta)
       return {
         content: [{ type: 'text' as const, text: JSON.stringify(response, null, 2) }],
       }

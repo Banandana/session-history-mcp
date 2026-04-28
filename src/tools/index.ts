@@ -14,6 +14,7 @@ import { registerDeepAnalyze } from './deep-analyze'
 import { registerContextAudit } from './context-audit'
 import { registerClaudeMdEffectiveness } from './claude-md-effectiveness'
 import { registerSemanticSearch } from './semantic-search'
+import { registerGetAuditHistory } from './get-audit-history'
 
 export function registerTools(server: McpServer): void {
   registerListProjects(server)
@@ -31,4 +32,5 @@ export function registerTools(server: McpServer): void {
   registerContextAudit(server)
   registerClaudeMdEffectiveness(server)
   registerSemanticSearch(server)
+  registerGetAuditHistory(server)
 }

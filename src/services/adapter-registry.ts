@@ -74,9 +74,9 @@ export class AdapterRegistry {
     return undefined
   }
 
-  resolveProject(path: string): ProjectMeta | undefined {
+  async resolveProject(path: string): Promise<ProjectMeta | undefined> {
     for (const adapter of this.adapters) {
-      const result = adapter.resolveProject(path)
+      const result = await adapter.resolveProject(path)
       if (result) return result
     }
     return undefined

@@ -47,7 +47,7 @@ function createMockRegistry(options: {
     async *getMemory(): AsyncIterable<MemoryEntry> {},
     async getSessionMetadata() { return undefined },
     async getSessionCost() { return undefined },
-    resolveProject(): ProjectMeta | undefined { return undefined },
+    async resolveProject(): Promise<ProjectMeta | undefined> { return undefined },
     async checkFreshness(known: IndexState): Promise<FreshnessResult> {
       if (freshnessResult) return freshnessResult
       const knownIds = known.sessionOffsets
@@ -408,7 +408,7 @@ describe('FreshnessGuard — generateSummaries', () => {
       async *getMemory() {},
       async getSessionMetadata() { return undefined },
       async getSessionCost() { return undefined },
-      resolveProject() { return undefined },
+      async resolveProject() { return undefined },
       async checkFreshness(known: IndexState): Promise<FreshnessResult> {
         const knownIds = known.sessionOffsets
         const newIds = sessions.filter(s => !knownIds.has(s.id)).map(s => s.id)
@@ -565,7 +565,7 @@ describe('FreshnessGuard — session discovery optimization', () => {
       async *getMemory() {},
       async getSessionMetadata() { return undefined },
       async getSessionCost() { return undefined },
-      resolveProject() { return undefined },
+      async resolveProject() { return undefined },
       async checkFreshness(known: IndexState): Promise<FreshnessResult> {
         const knownIds = known.sessionOffsets
         const newIds = sessions.filter(s => !knownIds.has(s.id)).map(s => s.id)

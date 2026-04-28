@@ -19,4 +19,6 @@ export const TOKENS = {
   PhaseClusterer: Symbol('PhaseClusterer'),
   ContextAuditor: Symbol('ContextAuditor'),
   EmbeddingIndexer: Symbol('EmbeddingIndexer'),
+  ToolInvocationLogger: Symbol('ToolInvocationLogger'),
+  AuditHistoryService: Symbol('AuditHistoryService'),
 } as const

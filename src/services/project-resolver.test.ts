@@ -53,26 +53,23 @@ describe('ProjectResolver', () => {
   })
 
   describe('resolveProject', () => {
-    it('delegates to registry', () => {
+    it('delegates to registry', async () => {
       const registry = new AdapterRegistry()
       const resolver = new ProjectResolver(registry)
-      const result = resolver.resolveProject('/any/path')
+      const result = await resolver.resolveProject('/any/path')
       expect(result).toBeUndefined()
     })
 
-    it('resolves path after project cache is built', async () => {
+    it('resolves real-cwd path correctly (hyphenated dir name)', async () => {
       const registry = new AdapterRegistry()
       const adapter = new ClaudeCodeAdapter(FIXTURES)
       registry.registerAdapter(adapter)
 
-      // Build cache by discovering projects
-      await collect<ProjectMeta>(registry.discoverProjects())
-
       const resolver = new ProjectResolver(registry)
-      // The resolver delegates to the adapter's resolveProject
-      const result = resolver.resolveProject('/home/test/project/alpha')
-      // May or may not resolve due to lossy slug-to-path conversion
-      expect(result === undefined || result.slug === '-home-test-project-alpha').toBe(true)
+      // The fixture project has cwd /home/test/project-alpha — slug heuristic
+      // would have decoded it to /home/test/project/alpha (wrong).
+      const result = await resolver.resolveProject('/home/test/project-alpha')
+      expect(result?.slug).toBe('-home-test-project-alpha')
     })
   })
 })

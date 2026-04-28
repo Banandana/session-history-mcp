@@ -19,6 +19,8 @@ import { TurnIndexer } from '../services/turn-indexer'
 import { PhaseClusterer } from '../services/phase-clusterer'
 import { ContextAuditor } from '../services/context-auditor'
 import { EmbeddingIndexer } from '../services/embedding-indexer'
+import { ToolInvocationLogger } from '../services/invocation-logger'
+import { AuditHistoryService } from '../services/audit-history'
 import { homedir } from 'node:os'
 import { join } from 'node:path'
 
@@ -49,8 +51,9 @@ export function registerInfrastructure(): void {
   // Index & Search
   const db = dbConn.get()
   const indexManager = new IndexManager(db)
-  // Ensure schema/migrations run before any service that relies on post-v0
-  // columns (e.g. ContextAuditor.ensureIndexes references cost_usd from v3).
+  // Ensure schema/migrations run before any service that depends on
+  // post-v0 columns: ContextAuditor.ensureIndexes references cost_usd
+  // (v3), and ToolInvocationLogger writes to tool_invocations (v5).
   indexManager.ensureSchema()
   container.register(TOKENS.IndexManager, { useValue: indexManager })
 
@@ -122,6 +125,13 @@ export function registerInfrastructure(): void {
     embeddingIndexer,
   )
   container.register(TOKENS.FreshnessGuard, { useValue: freshnessGuard })
+
+  // Tool-invocation log (V5) — schema is created via IndexManager migrations.
+  const invocationLogger = new ToolInvocationLogger(db)
+  container.register(TOKENS.ToolInvocationLogger, { useValue: invocationLogger })
+
+  const auditHistory = new AuditHistoryService(db)
+  container.register(TOKENS.AuditHistoryService, { useValue: auditHistory })
 }
 
 export function registerAll(): void {

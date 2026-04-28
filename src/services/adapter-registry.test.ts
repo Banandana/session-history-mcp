@@ -59,8 +59,8 @@ describe('AdapterRegistry', () => {
       expect(entries.length).toBeGreaterThan(0)
     })
 
-    it('resolveProject returns undefined for unknown path', () => {
-      const result = registry.resolveProject('/nonexistent/path')
+    it('resolveProject returns undefined for unknown path', async () => {
+      const result = await registry.resolveProject('/nonexistent/path')
       expect(result).toBeUndefined()
     })
 
@@ -82,8 +82,8 @@ describe('AdapterRegistry', () => {
       expect(projects).toHaveLength(0)
     })
 
-    it('resolveProject returns undefined', () => {
-      expect(registry.resolveProject('/any/path')).toBeUndefined()
+    it('resolveProject returns undefined', async () => {
+      expect(await registry.resolveProject('/any/path')).toBeUndefined()
     })
 
     it('checkFreshness returns not stale', async () => {

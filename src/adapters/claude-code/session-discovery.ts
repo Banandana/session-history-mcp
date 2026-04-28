@@ -1,7 +1,7 @@
 import { readdir, stat } from 'node:fs/promises'
 import { join } from 'node:path'
 import type { ProjectMeta, SessionMeta } from '../../types'
-import { readJsonFile, fileExists, listFiles } from '../../infrastructure/file-system'
+import { readJsonFile, fileExists, listFiles, streamJsonlLines } from '../../infrastructure/file-system'
 
 const UUID_JSONL = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}\.jsonl$/
 
@@ -19,21 +19,61 @@ interface SessionsIndex {
   readonly entries: readonly SessionsIndexEntry[]
 }
 
-function slugToPath(slug: string): string {
-  // Strip leading '-', then replace the first '-' in each segment with '/'
-  // The slug format is: -home-test-project-alpha
-  // Which maps to: /home/test/project-alpha
-  // Strategy: leading '-' becomes '/', remaining '-' become '/' EXCEPT
-  // hyphens that are part of directory names (ambiguous).
-  // Heuristic: strip leading dash, split on '-', rejoin with '/'
-  // This is lossy — hyphens in real dir names become separators.
+/**
+ * Lossy fallback. Used only when no session JSONL is available to read
+ * the authoritative `cwd`. Real dir names that contain hyphens get
+ * mangled into separators here — that's the bug `findRealCwd` works
+ * around when it can.
+ */
+function slugToPathHeuristic(slug: string): string {
   const stripped = slug.startsWith('-') ? slug.slice(1) : slug
   return '/' + stripped.replace(/-/g, '/')
+}
+
+const MAX_CWD_PROBE_LINES = 50
+
+/**
+ * Find the authoritative cwd for a project by scanning the first ~50 lines
+ * of any session JSONL in the project directory. The `cwd` field is written
+ * by Claude Code on every user/assistant message — it's the real filesystem
+ * path, unlike `slugToPath` which inverts ambiguously.
+ */
+async function findRealCwd(projectDir: string): Promise<string | undefined> {
+  let files: string[]
+  try {
+    files = await listFiles(projectDir, '.jsonl')
+  } catch {
+    return undefined
+  }
+  for (const f of files) {
+    if (!UUID_JSONL.test(f)) continue
+    const fullPath = join(projectDir, f)
+    let lineCount = 0
+    try {
+      for await (const { line } of streamJsonlLines(fullPath)) {
+        if (lineCount++ >= MAX_CWD_PROBE_LINES) break
+        try {
+          const obj = JSON.parse(line) as { cwd?: unknown }
+          if (typeof obj.cwd === 'string' && obj.cwd.startsWith('/')) {
+            return obj.cwd
+          }
+        } catch {
+          continue
+        }
+      }
+    } catch {
+      continue
+    }
+  }
+  return undefined
 }
 
 export class SessionDiscovery {
   private readonly claudeDir: string
   private projectCache: Map<string, ProjectMeta> = new Map()
+  /** Index from real filesystem path → slug for fast resolveProject lookups. */
+  private pathToSlug: Map<string, string> = new Map()
+  private cacheBuilt = false
 
   constructor(claudeDir: string) {
     this.claudeDir = claudeDir
@@ -49,7 +89,11 @@ export class SessionDiscovery {
 
       const slug = entry.name
       const projectDir = join(projectsDir, slug)
-      const derivedPath = slugToPath(slug)
+
+      // Authoritative path comes from the session JSONLs (`cwd` field).
+      // Fall back to the lossy slug heuristic only when no JSONL is readable.
+      const realCwd = await findRealCwd(projectDir)
+      const projectPath = realCwd ?? slugToPathHeuristic(slug)
 
       // Count UUID .jsonl files
       const files = await listFiles(projectDir, '.jsonl')
@@ -59,13 +103,13 @@ export class SessionDiscovery {
       const memoryDir = join(projectDir, 'memory')
       const hasMemory = await fileExists(memoryDir)
 
-      // Check for CLAUDE.md at derived project path
-      const claudeMdPath = join(derivedPath, 'CLAUDE.md')
+      // Check for CLAUDE.md at the real project path
+      const claudeMdPath = join(projectPath, 'CLAUDE.md')
       const hasClaudeMd = await fileExists(claudeMdPath)
 
       const project: ProjectMeta = {
         slug,
-        path: derivedPath,
+        path: projectPath,
         source: 'claude-code',
         sessionCount,
         hasMemory,
@@ -89,6 +133,9 @@ export class SessionDiscovery {
       const projectDir = join(projectsDir, slug)
       const indexPath = join(projectDir, 'sessions-index.json')
 
+      // Resolve the real cwd once per project; fall back to the heuristic.
+      const cwd = (await findRealCwd(projectDir)) ?? slugToPathHeuristic(slug)
+
       if (await fileExists(indexPath)) {
         // Use sessions-index.json
         const index = await readJsonFile<SessionsIndex>(indexPath)
@@ -97,7 +144,7 @@ export class SessionDiscovery {
             id: e.sessionId,
             source: 'claude-code',
             projectSlug: slug,
-            cwd: slugToPath(slug),
+            cwd,
             branch: e.gitBranch,
             startedAt: e.created ?? new Date(e.fileMtime ?? 0).toISOString(),
             summaryText: e.firstPrompt,
@@ -117,7 +164,7 @@ export class SessionDiscovery {
             id: sessionId,
             source: 'claude-code',
             projectSlug: slug,
-            cwd: slugToPath(slug),
+            cwd,
             startedAt: fileStat.birthtime.toISOString(),
           }
           yield session
@@ -126,15 +173,33 @@ export class SessionDiscovery {
     }
   }
 
-  resolveProject(path: string): ProjectMeta | undefined {
-    // Walk up directory tree, convert each path to slug, check cache
+  /**
+   * Async because we may need to build the cache. After the first call, the
+   * cache is warm and subsequent lookups are O(depth-of-path).
+   */
+  async resolveProject(path: string): Promise<ProjectMeta | undefined> {
+    if (!this.cacheBuilt) {
+      await this.buildProjectCache()
+    }
+    return this.lookupCached(path)
+  }
+
+  /** Sync lookup that assumes the cache is already built. */
+  private lookupCached(path: string): ProjectMeta | undefined {
     let current = path
     while (current && current !== '/') {
-      // Convert path to slug: strip leading '/', replace '/' with '-', prefix with '-'
-      const slug = '-' + current.slice(1).replace(/\//g, '-')
-      const project = this.projectCache.get(slug)
+      // First match by real filesystem path (handles hyphens correctly)
+      const slugByPath = this.pathToSlug.get(current)
+      if (slugByPath) {
+        const project = this.projectCache.get(slugByPath)
+        if (project) return project
+      }
+      // Fall back to slug heuristic — covers cases where the cache stores a
+      // heuristic-derived path because no JSONL was readable at discovery time.
+      const heuristicSlug = '-' + current.slice(1).replace(/\//g, '-')
+      const project = this.projectCache.get(heuristicSlug)
       if (project) return project
-      // Move up one directory
+
       const lastSlash = current.lastIndexOf('/')
       current = lastSlash > 0 ? current.slice(0, lastSlash) : '/'
     }
@@ -143,8 +208,11 @@ export class SessionDiscovery {
 
   async buildProjectCache(): Promise<void> {
     this.projectCache.clear()
+    this.pathToSlug.clear()
     for await (const project of this.discoverProjects()) {
       this.projectCache.set(project.slug, project)
+      this.pathToSlug.set(project.path, project.slug)
     }
+    this.cacheBuilt = true
   }
 }
