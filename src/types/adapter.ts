@@ -25,6 +25,7 @@ export interface SessionMetadataResult {
   readonly worktreeBranch?: string
   readonly worktreePath?: string
   readonly speculationTimeSavedMs: number
+  readonly gitBranch?: string
 }
 
 export interface SessionAdapter {

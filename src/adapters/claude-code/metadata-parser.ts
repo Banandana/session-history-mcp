@@ -21,6 +21,7 @@ export class MetadataParser {
     let worktreeBranch: string | undefined
     let worktreePath: string | undefined
     let speculationTimeSavedMs = 0
+    let gitBranch: string | undefined
 
     for await (const { line } of streamJsonlLines(sessionPath)) {
       let parsed: Record<string, unknown>
@@ -32,6 +33,13 @@ export class MetadataParser {
 
       const lineType = parsed.type as string | undefined
       if (!lineType) continue
+
+      if (gitBranch === undefined && (lineType === 'user' || lineType === 'assistant')) {
+        const b = parsed.gitBranch
+        if (typeof b === 'string' && b.length > 0) {
+          gitBranch = b
+        }
+      }
 
       switch (lineType) {
         case 'custom-title':
@@ -106,6 +114,7 @@ export class MetadataParser {
       worktreeBranch,
       worktreePath,
       speculationTimeSavedMs,
+      gitBranch,
     }
   }
 }

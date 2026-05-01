@@ -140,6 +140,18 @@ export class IndexManager {
       })()
       this.db.pragma('user_version = 5')
     }
+    if (userVersion < 6) {
+      this.db.transaction(() => {
+        this.migrateToV6()
+      })()
+      this.db.pragma('user_version = 6')
+    }
+  }
+
+  private migrateToV6(): void {
+    // Marker for the one-time branch backfill — distinguishes "never checked"
+    // from "checked, no gitBranch in JSONL" so the backfill loop terminates.
+    this.addColumnIfMissing('sessions', 'metadata_backfilled_at', 'TEXT')
   }
 
   private migrateToV5(): void {

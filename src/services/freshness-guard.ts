@@ -68,6 +68,10 @@ export class FreshnessGuard {
       this.removeDeletedSessions(result.removedSessions)
     }
 
+    // 4b. Backfill missing session-level metadata for old rows (bounded per cycle).
+    // Catches sessions indexed before MetadataParser learned to extract gitBranch.
+    void this.backfillMissingBranch().catch(() => { /* backfill failure is non-critical */ })
+
     // 5. Fire-and-forget LLM summarization — must not block sync
     void this.generateSummaries().catch(() => { /* summarization failure is non-critical */ })
 
@@ -86,6 +90,22 @@ export class FreshnessGuard {
       indexedAt: new Date().toISOString(),
       sessionCount,
       staleSessions: 0,
+    }
+  }
+
+  private async backfillMissingBranch(): Promise<void> {
+    const rows = this.db.prepare(`
+      SELECT id, project_slug FROM sessions
+      WHERE metadata_backfilled_at IS NULL
+      LIMIT 50
+    `).all() as Array<{ id: string; project_slug: string | null }>
+
+    for (const row of rows) {
+      try {
+        await this.syncSessionMetadata(row.id, row.project_slug)
+      } catch {
+        // skip — try again next cycle
+      }
     }
   }
 
@@ -581,7 +601,9 @@ export class FreshnessGuard {
         tags = ?,
         mode = COALESCE(?, mode),
         worktree_branch = COALESCE(?, worktree_branch),
-        speculation_time_saved_ms = ?
+        speculation_time_saved_ms = ?,
+        branch = COALESCE(?, branch),
+        metadata_backfilled_at = ?
       WHERE id = ?
     `).run(
       metadata.customTitle ?? null,
@@ -590,6 +612,8 @@ export class FreshnessGuard {
       metadata.mode ?? null,
       metadata.worktreeBranch ?? null,
       metadata.speculationTimeSavedMs,
+      metadata.gitBranch ?? null,
+      new Date().toISOString(),
       sessionId,
     )
 
