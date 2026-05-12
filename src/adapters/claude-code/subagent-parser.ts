@@ -82,7 +82,7 @@ export class SubagentParser {
     const files = await listFiles(subagentsDir, '.jsonl')
     for (const file of files) {
       const match = AGENT_JSONL_RE.exec(file)
-      if (!match) continue
+      if (!match || !match[1]) continue
 
       const agentId = match[1]
       const metaPath = join(subagentsDir, `agent-${agentId}.meta.json`)

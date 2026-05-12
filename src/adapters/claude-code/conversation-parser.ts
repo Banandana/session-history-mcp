@@ -113,9 +113,8 @@ const ALL_CAPS_RE = /[A-Z]{4,}/
 
 /** Heuristic: is this user text message a correction of the preceding assistant turn? */
 function detectCorrection(contentBlocks: readonly ContentBlock[]): boolean {
-  if (contentBlocks.length === 0) return false
   const firstBlock = contentBlocks[0]
-  if (firstBlock.type !== 'text' || !firstBlock.text) return false
+  if (!firstBlock || firstBlock.type !== 'text' || !firstBlock.text) return false
 
   const text = firstBlock.text.trim().toLowerCase()
   if (text.length === 0) return false
@@ -127,7 +126,7 @@ function detectCorrection(contentBlocks: readonly ContentBlock[]): boolean {
   if (CORRECTION_KEYWORDS.test(text)) return true
 
   // Pattern 3: ALL CAPS messages with 4+ consecutive caps (anger/emphasis)
-  const original = firstBlock.text!.trim()
+  const original = firstBlock.text.trim()
   if (original === original.toUpperCase() && ALL_CAPS_RE.test(original)) {
     return true
   }

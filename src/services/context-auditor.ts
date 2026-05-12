@@ -402,7 +402,7 @@ export class ContextAuditor {
       `SELECT total_tokens FROM sessions s ${where} ORDER BY total_tokens`
     ).all(...params) as Array<{ total_tokens: number }>
     const median = allTokens.length > 0
-      ? allTokens[Math.floor(allTokens.length / 2)].total_tokens
+      ? (allTokens[Math.floor(allTokens.length / 2)]?.total_tokens ?? 0)
       : 0
 
     const peakAvg = this.db.prepare(`

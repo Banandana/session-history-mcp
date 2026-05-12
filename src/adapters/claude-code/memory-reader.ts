@@ -15,13 +15,13 @@ function parseFrontmatter(content: string): { fields: FrontmatterFields; body: s
   const match = FRONTMATTER_RE.exec(content)
   if (!match) return undefined
 
-  const rawFields = match[1]
-  const body = match[2].trim()
+  const rawFields = match[1] ?? ''
+  const body = (match[2] ?? '').trim()
   const fields: Record<string, string> = {}
 
   for (const line of rawFields.split('\n')) {
     const fieldMatch = FIELD_RE.exec(line.trim())
-    if (fieldMatch) {
+    if (fieldMatch && fieldMatch[1] && fieldMatch[2]) {
       fields[fieldMatch[1]] = fieldMatch[2].trim()
     }
   }

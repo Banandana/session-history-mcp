@@ -21,12 +21,12 @@ function parseFrontmatter(content: string): { fields: Frontmatter; body: string 
   const match = FRONTMATTER_RE.exec(content)
   if (!match) return undefined
   const fields: Record<string, string> = {}
-  for (const line of match[1].split('\n')) {
+  for (const line of (match[1] ?? '').split('\n')) {
     const fieldMatch = FIELD_RE.exec(line.trim())
-    if (fieldMatch) fields[fieldMatch[1]] = fieldMatch[2].trim()
+    if (fieldMatch && fieldMatch[1] && fieldMatch[2]) fields[fieldMatch[1]] = fieldMatch[2].trim()
   }
   if (!fields['name'] || !fields['description'] || !fields['type']) return undefined
-  return { fields: fields as unknown as Frontmatter, body: match[2].trim() }
+  return { fields: fields as unknown as Frontmatter, body: (match[2] ?? '').trim() }
 }
 
 export class PiMemoryReader {

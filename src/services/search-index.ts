@@ -47,6 +47,7 @@ export function sanitizeFtsQuery(query: string): string {
 
   while (i < len) {
     const ch = query[i]
+    if (ch === undefined) break
 
     // Whitespace — preserved verbatim
     if (/\s/.test(ch)) {
@@ -74,7 +75,7 @@ export function sanitizeFtsQuery(query: string): string {
 
     // Bare token — consume until whitespace, paren, or quote
     let j = i
-    while (j < len && !/[\s"()]/.test(query[j])) j++
+    while (j < len && !/[\s"()]/.test(query[j] ?? '')) j++
     const word = query.slice(i, j)
     i = j
 

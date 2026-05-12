@@ -24,7 +24,7 @@ export class PiMetadataParser {
 
       for (const blk of message.content as Array<{ type?: string; text?: unknown }>) {
         if (blk?.type === 'text' && typeof blk.text === 'string' && blk.text.trim().length > 0) {
-          const first = blk.text.trim().split('\n')[0]
+          const first = blk.text.trim().split('\n')[0] ?? ''
           aiTitle = first.length > 100 ? first.slice(0, 97) + '...' : first
           break
         }

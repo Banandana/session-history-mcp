@@ -17,6 +17,7 @@ export class TurnIndexer {
     const insertMany = this.db.transaction((msgs: readonly NormalizedMessage[]) => {
       for (let i = 0; i < msgs.length; i++) {
         const msg = msgs[i]
+        if (!msg) continue
         const toolNames = msg.toolNames && msg.toolNames.length > 0
           ? JSON.stringify(msg.toolNames)
           : '[]'

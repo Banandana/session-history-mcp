@@ -90,9 +90,8 @@ const CORRECTION_KEYWORDS = /\b(wrong|don'?t|not that|i said|i told you|should h
 const ALL_CAPS_RE = /[A-Z]{4,}/
 
 function detectCorrection(blocks: readonly ContentBlock[]): boolean {
-  if (blocks.length === 0) return false
   const first = blocks[0]
-  if (first.type !== 'text' || !first.text) return false
+  if (!first || first.type !== 'text' || !first.text) return false
   const trimmed = first.text.trim()
   if (trimmed.length === 0) return false
   const lower = trimmed.toLowerCase()

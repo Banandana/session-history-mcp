@@ -191,6 +191,7 @@ export function registerClaudeMdEffectiveness(server: McpServer): void {
           if (idx == null) return null
 
           const editSession = sessions[idx]
+          if (!editSession) return null
           // Before window = sessions strictly before the edit (exclusive).
           const beforeStart = Math.max(0, idx - windowSize)
           const before = sessions.slice(beforeStart, idx)

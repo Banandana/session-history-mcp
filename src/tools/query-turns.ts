@@ -112,7 +112,7 @@ export function summarizeMessage(msg: NormalizedMessage): string {
 
   // Single tool with params
   if (toolUseBlocks.length === 1) {
-    const block = toolUseBlocks[0]
+    const block = toolUseBlocks[0]!
     return `[${extractToolParams(block.name!, block.input)}]`
   }
 
@@ -227,6 +227,7 @@ async function querySingleSession(
   const matched: TurnReference[] = []
   for (let i = 0; i < messages.length; i++) {
     const msg = messages[i]
+    if (!msg) continue
     const result = messageMatchesFilters(msg, i, filters)
     if (result.matches) {
       matched.push({

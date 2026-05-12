@@ -138,21 +138,23 @@ export function registerGetConversation(server: McpServer): void {
           // Find the smallest phase in one pass
           let smallestIdx = 0
           for (let i = 1; i < phases.length; i++) {
-            if (phases[i].turnCount < phases[smallestIdx].turnCount) {
+            if (phases[i]!.turnCount < phases[smallestIdx]!.turnCount) {
               smallestIdx = i
             }
           }
           const mergeIdx = smallestIdx === 0 ? 1
             : smallestIdx === phases.length - 1 ? smallestIdx - 1
-            : phases[smallestIdx - 1].turnCount <= phases[smallestIdx + 1].turnCount ? smallestIdx - 1 : smallestIdx + 1
+            : phases[smallestIdx - 1]!.turnCount <= phases[smallestIdx + 1]!.turnCount ? smallestIdx - 1 : smallestIdx + 1
           const [a, b] = mergeIdx < smallestIdx ? [mergeIdx, smallestIdx] : [smallestIdx, mergeIdx]
-          const mergedTools = new Set([...phases[a].toolNames, ...phases[b].toolNames])
+          const pa = phases[a]!
+          const pb = phases[b]!
+          const mergedTools = new Set([...pa.toolNames, ...pb.toolNames])
           phases[a] = {
-            turnRange: { from: phases[a].turnRange.from, to: phases[b].turnRange.to },
-            description: phases[a].description,
+            turnRange: { from: pa.turnRange.from, to: pb.turnRange.to },
+            description: pa.description,
             toolNames: [...mergedTools],
-            errorCount: phases[a].errorCount + phases[b].errorCount,
-            turnCount: phases[a].turnCount + phases[b].turnCount,
+            errorCount: pa.errorCount + pb.errorCount,
+            turnCount: pa.turnCount + pb.turnCount,
           }
           phases.splice(b, 1)
         }

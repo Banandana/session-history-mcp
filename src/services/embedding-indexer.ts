@@ -157,13 +157,14 @@ export class EmbeddingIndexer {
       this.db.transaction(() => {
         for (let j = 0; j < batch.length; j++) {
           const vector = vectors[j]
-          if (vector.length !== this.dim) continue
+          const entry = batch[j]
+          if (!vector || !entry || vector.length !== this.dim) continue
           const buf = Buffer.from(new Float32Array(vector).buffer)
           // vec0 requires BigInt for the rowid binding (see ensureSchema).
-          const rowid = BigInt(batch[j].rowid)
+          const rowid = BigInt(entry.rowid)
           deleteEmbedding.run(rowid)
           insertEmbedding.run(rowid, buf)
-          markIndexed.run(now, batch[j].rowid)
+          markIndexed.run(now, entry.rowid)
           indexed++
         }
       })()
@@ -183,8 +184,8 @@ export class EmbeddingIndexer {
     this.ensureSchema()
 
     const vectors = await this.client.embed([query.slice(0, MAX_INPUT_CHARS)])
-    if (vectors.length === 0) return []
     const queryVec = vectors[0]
+    if (!queryVec) return []
     if (queryVec.length !== this.dim) {
       throw new Error(
         `Query embedding dim ${queryVec.length} does not match index dim ${this.dim}`,

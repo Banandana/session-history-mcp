@@ -54,10 +54,13 @@ export function truncateBlocks(blocks: readonly ContentBlock[], maxTokens: numbe
 
     for (const { idx } of indices) {
       if (totalTokens <= maxTokens) break
-      const before = estimateBlockTokens(result[idx])
+      const block = result[idx]
+      if (!block) continue
+      const before = estimateBlockTokens(block)
       const maxChars = Math.floor(maxTokens * CHARS_PER_TOKEN * 0.3)
-      result[idx] = truncateBlock(result[idx], field, maxChars)
-      totalTokens -= before - estimateBlockTokens(result[idx])
+      const truncated = truncateBlock(block, field, maxChars)
+      result[idx] = truncated
+      totalTokens -= before - estimateBlockTokens(truncated)
     }
   }
 

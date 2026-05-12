@@ -81,9 +81,10 @@ export class PhaseClusterer {
 
         const tools = [...allTools]
 
+        const startCategory = categories[phaseStart] ?? 'Discuss'
         phases.push({
           turnRange: { from: phaseStart, to: i - 1 },
-          description: this.describeCategory(categories[phaseStart], tools),
+          description: this.describeCategory(startCategory, tools),
           toolNames: tools,
           errorCount: errors,
           turnCount: slice.length,
@@ -103,33 +104,36 @@ export class PhaseClusterer {
 
     for (let i = 0; i < phases.length; i++) {
       const phase = phases[i]
+      if (!phase) continue
       const prev = i > 0 ? phases[i - 1] : null
       const next = i < phases.length - 1 ? phases[i + 1] : null
 
       // Absorb single-turn phases surrounded by same category
       if (
         phase.turnCount === 1 &&
-        prev !== null && next !== null &&
+        prev && next &&
         categories[prev.turnRange.from] === categories[next.turnRange.from]
       ) {
         const merged = result[result.length - 1]
-        const mergedTools = new Set([...merged.toolNames, ...phase.toolNames])
-        result[result.length - 1] = {
-          turnRange: { from: merged.turnRange.from, to: phase.turnRange.to },
-          description: merged.description,
-          toolNames: [...mergedTools],
-          errorCount: merged.errorCount + phase.errorCount,
-          turnCount: merged.turnCount + phase.turnCount,
+        if (merged) {
+          const mergedTools = new Set([...merged.toolNames, ...phase.toolNames])
+          result[result.length - 1] = {
+            turnRange: { from: merged.turnRange.from, to: phase.turnRange.to },
+            description: merged.description,
+            toolNames: [...mergedTools],
+            errorCount: merged.errorCount + phase.errorCount,
+            turnCount: merged.turnCount + phase.turnCount,
+          }
+          continue
         }
-        continue
       }
 
       // Try to merge with previous if same category (after absorption changed things)
+      const last = result[result.length - 1]
       if (
-        result.length > 0 &&
-        categories[result[result.length - 1].turnRange.from] === categories[phase.turnRange.from]
+        last &&
+        categories[last.turnRange.from] === categories[phase.turnRange.from]
       ) {
-        const last = result[result.length - 1]
         const mergedTools = new Set([...last.toolNames, ...phase.toolNames])
         result[result.length - 1] = {
           turnRange: { from: last.turnRange.from, to: phase.turnRange.to },
