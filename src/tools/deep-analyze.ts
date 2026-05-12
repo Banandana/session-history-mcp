@@ -134,7 +134,7 @@ export function registerDeepAnalyze(server: McpServer): void {
       }
 
       // Load full session transcript
-      const projectSlug = (session.project_slug as string) ?? 'unknown'
+      const projectSlug = (session['project_slug'] as string) ?? 'unknown'
       const sessionPath = join(claudeDir, 'projects', projectSlug, `${params.sessionId}.jsonl`)
 
       const parser = new ConversationParser()
@@ -152,14 +152,14 @@ export function registerDeepAnalyze(server: McpServer): void {
       // Build the full transcript
       const metadataBlock = [
         `Session: ${params.sessionId}`,
-        `Title: ${session.custom_title ?? session.ai_title ?? session.topic ?? 'untitled'}`,
-        `Duration: ${session.duration_minutes ?? 0} min, ${session.total_turns ?? messages.length} turns`,
-        `Errors: ${session.error_count ?? 0}, Corrections: ${session.correction_count ?? 0}`,
-        `Models: ${session.models_used ?? 'unknown'}`,
-        `Cost: ${session.cost_usd != null ? `$${(session.cost_usd as number).toFixed(4)}` : 'unknown'}`,
-        session.tool_counts ? `Tools: ${session.tool_counts}` : null,
-        session.files_changed ? `Files changed: ${session.files_changed}` : null,
-        session.mode ? `Mode: ${session.mode}` : null,
+        `Title: ${session['custom_title'] ?? session['ai_title'] ?? session['topic'] ?? 'untitled'}`,
+        `Duration: ${session['duration_minutes'] ?? 0} min, ${session['total_turns'] ?? messages.length} turns`,
+        `Errors: ${session['error_count'] ?? 0}, Corrections: ${session['correction_count'] ?? 0}`,
+        `Models: ${session['models_used'] ?? 'unknown'}`,
+        `Cost: ${session['cost_usd'] != null ? `$${(session['cost_usd'] as number).toFixed(4)}` : 'unknown'}`,
+        session['tool_counts'] ? `Tools: ${session['tool_counts']}` : null,
+        session['files_changed'] ? `Files changed: ${session['files_changed']}` : null,
+        session['mode'] ? `Mode: ${session['mode']}` : null,
       ].filter(Boolean).join('\n')
 
       const transcriptLines = messages.map((msg, i) => formatMessage(msg, i))
@@ -183,7 +183,7 @@ export function registerDeepAnalyze(server: McpServer): void {
 
       const data = {
         sessionId: params.sessionId,
-        title: session.custom_title ?? session.ai_title ?? session.topic,
+        title: session['custom_title'] ?? session['ai_title'] ?? session['topic'],
         analyzedTurns: messages.length,
         focus: params.focus ?? null,
         model: anthropic.label,

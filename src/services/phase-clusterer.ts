@@ -14,7 +14,7 @@ function isExploreAgent(tools: readonly string[], blocks: readonly ContentBlock[
   for (const block of blocks) {
     if (block.type === 'tool_use' && block.name === 'Agent') {
       const input = block.input as Record<string, unknown> | undefined
-      if (input?.subagent_type === 'Explore') return true
+      if (input?.['subagent_type'] === 'Explore') return true
     }
   }
   return false

@@ -21,7 +21,7 @@ const MAX_BATCH = 32
 // and for retrieval purposes the first few hundred tokens of a message
 // usually carry the relevant signal. Configurable via env var so users
 // can trade recall for throughput on their hardware.
-const MAX_INPUT_CHARS = Number(process.env.EMBEDDING_MAX_CHARS ?? '500')
+const MAX_INPUT_CHARS = Number(process.env['EMBEDDING_MAX_CHARS'] ?? '500')
 const DEFAULT_BUDGET = 500 // messages per cycle — keeps indexing bounded
 
 export class EmbeddingIndexer {

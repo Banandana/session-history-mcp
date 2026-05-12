@@ -160,26 +160,26 @@ export function registerGetSession(server: McpServer): void {
       }
 
       if (has('metadata')) {
-        result.messageCount = session.message_count
-        result.correctionCount = session.correction_count
-        result.subagentCount = session.subagent_count
-        result.hasThinking = session.has_thinking === 1
-        result.worktreeBranch = session.worktree_branch
-        result.speculationTimeSavedMs = session.speculation_time_saved_ms
+        result['messageCount'] = session.message_count
+        result['correctionCount'] = session.correction_count
+        result['subagentCount'] = session.subagent_count
+        result['hasThinking'] = session.has_thinking === 1
+        result['worktreeBranch'] = session.worktree_branch
+        result['speculationTimeSavedMs'] = session.speculation_time_saved_ms
       }
 
       if (has('toolCounts')) {
-        result.toolCounts = session.tool_counts ? JSON.parse(session.tool_counts) as unknown : null
+        result['toolCounts'] = session.tool_counts ? JSON.parse(session.tool_counts) as unknown : null
       }
 
       if (has('filesChanged')) {
-        result.filesChanged = session.files_changed ? JSON.parse(session.files_changed) as unknown : null
+        result['filesChanged'] = session.files_changed ? JSON.parse(session.files_changed) as unknown : null
       }
 
       if (has('cacheTokens')) {
         const cacheRead = session.total_cache_read_tokens ?? 0
         const cacheCreation = session.total_cache_creation_tokens ?? 0
-        result.cacheTokens = {
+        result['cacheTokens'] = {
           creation: cacheCreation,
           read: cacheRead,
           hitRatio: Math.round(
@@ -193,7 +193,7 @@ export function registerGetSession(server: McpServer): void {
           'SELECT MAX(token_count) as peak FROM messages WHERE session_id = ?'
         ).get(params.sessionId) as { peak: number | null }
 
-        result.tokenAccumulation = {
+        result['tokenAccumulation'] = {
           totalTokens: session.total_tokens,
           peakMessageTokens: peakMsg.peak ?? 0,
           avgTokensPerTurn: session.total_turns > 0
@@ -212,7 +212,7 @@ export function registerGetSession(server: McpServer): void {
           timestamp: string | null
         }>
         if (prLinks.length > 0) {
-          result.prLinks = prLinks.map(pr => ({
+          result['prLinks'] = prLinks.map(pr => ({
             prNumber: pr.pr_number,
             prUrl: pr.pr_url,
             prRepository: pr.pr_repository,
@@ -228,7 +228,7 @@ export function registerGetSession(server: McpServer): void {
         const collapseCount = db.prepare(
           'SELECT COUNT(*) as cnt FROM context_collapses WHERE session_id = ?'
         ).get(params.sessionId) as { cnt: number }
-        result.contextCollapseCount = collapseCount.cnt
+        result['contextCollapseCount'] = collapseCount.cnt
       }
 
       if (has('subagents')) {
@@ -243,7 +243,7 @@ export function registerGetSession(server: McpServer): void {
           duration_ms: number | null
           model: string | null
         }>
-        result.subagents = subagents.map(sa => ({
+        result['subagents'] = subagents.map(sa => ({
           id: sa.id,
           agentType: sa.agent_type,
           description: sa.description,
@@ -261,7 +261,7 @@ export function registerGetSession(server: McpServer): void {
           collapse_id: string; summary: string | null
           first_archived_uuid: string | null; last_archived_uuid: string | null
         }>
-        result.contextCollapses = collapses.map(c => ({
+        result['contextCollapses'] = collapses.map(c => ({
           collapseId: c.collapse_id,
           summary: c.summary,
           firstArchivedUuid: c.first_archived_uuid,
@@ -289,7 +289,7 @@ export function registerGetSession(server: McpServer): void {
           )
         )
 
-        result.tokenCurve = msgs.map((m, i) => {
+        result['tokenCurve'] = msgs.map((m, i) => {
           cumulative += m.token_count
           return {
             turnIndex: i,
@@ -321,19 +321,19 @@ export function registerGetSession(server: McpServer): void {
 
                 const llmResponse = await llmClient.analyze(systemPrompt, userContent, 300)
                 const relevant = !llmResponse.toLowerCase().startsWith('no')
-                result.analysis = {
+                result['analysis'] = {
                   relevant,
                   summary: llmResponse,
                   generatedAt: new Date().toISOString(),
                 }
               } else {
-                result.analysis = null
+                result['analysis'] = null
               }
             } else {
-              result.analysis = { relevant: false, summary: 'Too few messages for analysis', reason: 'too_few_messages' }
+              result['analysis'] = { relevant: false, summary: 'Too few messages for analysis', reason: 'too_few_messages' }
             }
           } catch {
-            result.analysis = null
+            result['analysis'] = null
           }
         }
       }

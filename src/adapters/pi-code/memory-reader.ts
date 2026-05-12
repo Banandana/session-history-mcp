@@ -25,7 +25,7 @@ function parseFrontmatter(content: string): { fields: Frontmatter; body: string 
     const fieldMatch = FIELD_RE.exec(line.trim())
     if (fieldMatch) fields[fieldMatch[1]] = fieldMatch[2].trim()
   }
-  if (!fields.name || !fields.description || !fields.type) return undefined
+  if (!fields['name'] || !fields['description'] || !fields['type']) return undefined
   return { fields: fields as unknown as Frontmatter, body: match[2].trim() }
 }
 

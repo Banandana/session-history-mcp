@@ -26,7 +26,7 @@ function parseFrontmatter(content: string): { fields: FrontmatterFields; body: s
     }
   }
 
-  if (!fields.name || !fields.description || !fields.type) return undefined
+  if (!fields['name'] || !fields['description'] || !fields['type']) return undefined
 
   return {
     fields: fields as unknown as FrontmatterFields,

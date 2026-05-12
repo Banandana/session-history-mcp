@@ -43,8 +43,8 @@ export function registerInfrastructure(): void {
   registered = true
 
   const claudeDir = join(homedir(), '.claude')
-  const localLlmUrl = process.env.LOCAL_LLM_URL ?? DEFAULT_LOCAL_LLM_URL
-  const localLlmModel = process.env.LOCAL_LLM_MODEL ?? DEFAULT_LOCAL_LLM_MODEL
+  const localLlmUrl = process.env['LOCAL_LLM_URL'] ?? DEFAULT_LOCAL_LLM_URL
+  const localLlmModel = process.env['LOCAL_LLM_MODEL'] ?? DEFAULT_LOCAL_LLM_MODEL
 
   container.bind<string>(TOKENS.ClaudeDataDir).toConstantValue(claudeDir)
   container.bind<string>(TOKENS.LocalLlmUrl).toConstantValue(localLlmUrl)
@@ -55,7 +55,7 @@ export function registerInfrastructure(): void {
   container.bind<DatabaseConnection>(TOKENS.Database).toConstantValue(dbConn)
 
   // Adapter & Registry
-  const piDir = process.env.PI_AGENT_DIR ?? join(homedir(), '.pi', 'agent')
+  const piDir = process.env['PI_AGENT_DIR'] ?? join(homedir(), '.pi', 'agent')
   const claudeAdapter = new ClaudeCodeAdapter(claudeDir)
   const piAdapter = new PiCodeAdapter(piDir)
   const registry = new AdapterRegistry()
@@ -112,11 +112,11 @@ export function registerInfrastructure(): void {
   // surface a clean "feature disabled" error. Inversify's toConstantValue(null)
   // is legal but downstream consumers shouldn't have to null-check; checking
   // isBound is cleaner.
-  const embeddingModel = process.env.VLLM_EMBEDDING_MODEL
+  const embeddingModel = process.env['VLLM_EMBEDDING_MODEL']
   let embeddingIndexer: EmbeddingIndexer | null = null
   if (embeddingModel) {
-    const embeddingDim = Number(process.env.VLLM_EMBEDDING_DIM ?? '1024')
-    const embeddingBaseUrl = process.env.VLLM_EMBEDDING_URL ?? localLlmUrl
+    const embeddingDim = Number(process.env['VLLM_EMBEDDING_DIM'] ?? '1024')
+    const embeddingBaseUrl = process.env['VLLM_EMBEDDING_URL'] ?? localLlmUrl
     const embeddingClient = new OpenAiLlmClient(localLlmUrl, localLlmModel, {
       embeddingModel,
       embeddingDim,

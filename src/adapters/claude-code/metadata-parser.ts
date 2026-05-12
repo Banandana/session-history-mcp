@@ -31,7 +31,7 @@ export class MetadataParser {
         continue
       }
 
-      const lineType = parsed.type as string | undefined
+      const lineType = parsed['type'] as string | undefined
       if (!lineType) continue
 
       if (gitBranch === undefined && (lineType === 'user' || lineType === 'assistant')) {
@@ -43,62 +43,62 @@ export class MetadataParser {
 
       switch (lineType) {
         case 'custom-title':
-          customTitle = parsed.customTitle as string
+          customTitle = parsed['customTitle'] as string
           break
 
         case 'ai-title':
-          aiTitle = parsed.aiTitle as string
+          aiTitle = parsed['aiTitle'] as string
           break
 
         case 'tag':
-          if (typeof parsed.tag === 'string') {
-            tags.push(parsed.tag)
+          if (typeof parsed['tag'] === 'string') {
+            tags.push(parsed['tag'])
           }
           break
 
         case 'mode':
-          if (parsed.mode === 'coordinator' || parsed.mode === 'normal') {
-            mode = parsed.mode
+          if (parsed['mode'] === 'coordinator' || parsed['mode'] === 'normal') {
+            mode = parsed['mode']
           }
           break
 
         case 'pr-link':
           prLinks.push({
             sessionId,
-            prNumber: parsed.prNumber as number,
-            prUrl: parsed.prUrl as string,
-            prRepository: parsed.prRepository as string,
-            timestamp: (parsed.timestamp as string) ?? new Date().toISOString(),
+            prNumber: parsed['prNumber'] as number,
+            prUrl: parsed['prUrl'] as string,
+            prRepository: parsed['prRepository'] as string,
+            timestamp: (parsed['timestamp'] as string) ?? new Date().toISOString(),
           })
           break
 
         case 'marble-origami-commit':
           collapses.push({
             sessionId,
-            collapseId: parsed.collapseId as string,
-            summary: (parsed.summary as string) ?? '',
-            firstArchivedUuid: parsed.firstArchivedUuid as string,
-            lastArchivedUuid: parsed.lastArchivedUuid as string,
+            collapseId: parsed['collapseId'] as string,
+            summary: (parsed['summary'] as string) ?? '',
+            firstArchivedUuid: parsed['firstArchivedUuid'] as string,
+            lastArchivedUuid: parsed['lastArchivedUuid'] as string,
           })
           break
 
         case 'task-summary':
-          if (typeof parsed.summary === 'string') {
-            taskSummaries.push(parsed.summary)
+          if (typeof parsed['summary'] === 'string') {
+            taskSummaries.push(parsed['summary'])
           }
           break
 
         case 'worktree-state': {
-          const ws = parsed.worktreeSession as Record<string, unknown> | null
+          const ws = parsed['worktreeSession'] as Record<string, unknown> | null
           if (ws) {
-            worktreeBranch = ws.worktreeBranch as string | undefined
-            worktreePath = ws.worktreePath as string | undefined
+            worktreeBranch = ws['worktreeBranch'] as string | undefined
+            worktreePath = ws['worktreePath'] as string | undefined
           }
           break
         }
 
         case 'speculation-accept':
-          speculationTimeSavedMs += (parsed.timeSavedMs as number) ?? 0
+          speculationTimeSavedMs += (parsed['timeSavedMs'] as number) ?? 0
           break
       }
     }

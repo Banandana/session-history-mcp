@@ -33,28 +33,28 @@ export class SubagentParser {
         continue
       }
 
-      const timestamp = parsed.timestamp as string | undefined
+      const timestamp = parsed['timestamp'] as string | undefined
       if (timestamp) {
         if (!firstTimestamp) firstTimestamp = timestamp
         lastTimestamp = timestamp
       }
 
-      const message = parsed.message as Record<string, unknown> | undefined
+      const message = parsed['message'] as Record<string, unknown> | undefined
       if (!message) continue
 
-      if (parsed.type === 'assistant' && !model && message.model) {
-        model = message.model as string
+      if (parsed['type'] === 'assistant' && !model && message['model']) {
+        model = message['model'] as string
       }
 
-      const usage = message.usage as Record<string, number> | undefined
+      const usage = message['usage'] as Record<string, number> | undefined
       if (usage) {
-        totalTokens += (usage.input_tokens ?? 0) + (usage.output_tokens ?? 0)
+        totalTokens += (usage['input_tokens'] ?? 0) + (usage['output_tokens'] ?? 0)
       }
 
-      const content = message.content
+      const content = message['content']
       if (Array.isArray(content)) {
         for (const block of content) {
-          if (block && typeof block === 'object' && (block as Record<string, unknown>).type === 'tool_use') {
+          if (block && typeof block === 'object' && (block as Record<string, unknown>)['type'] === 'tool_use') {
             totalTools++
           }
         }

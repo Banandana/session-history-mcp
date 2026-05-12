@@ -127,37 +127,37 @@ export function registerListSessions(server: McpServer): void {
       const rows = db.prepare(sql).all(...sqlParams) as Array<Record<string, unknown>>
 
       const sessions = rows.map(row => {
-        const title = (row.custom_title as string | null) ?? (row.ai_title as string | null)
+        const title = (row['custom_title'] as string | null) ?? (row['ai_title'] as string | null)
         return {
-          id: row.id as string,
-          source: row.source as string,
-          projectSlug: row.project_slug as string,
-          cwd: row.cwd as string,
-          branch: row.branch as string | null,
-          startedAt: row.started_at as string,
-          endedAt: row.ended_at as string | null,
-          durationMinutes: row.duration_minutes as number | null,
-          totalTurns: row.total_turns as number,
-          totalTokens: row.total_tokens as number,
-          messageCount: row.message_count as number | null,
-          errorCount: row.error_count as number | null,
-          topic: row.topic as string | null,
-          summary: row.summary as string | null,
+          id: row['id'] as string,
+          source: row['source'] as string,
+          projectSlug: row['project_slug'] as string,
+          cwd: row['cwd'] as string,
+          branch: row['branch'] as string | null,
+          startedAt: row['started_at'] as string,
+          endedAt: row['ended_at'] as string | null,
+          durationMinutes: row['duration_minutes'] as number | null,
+          totalTurns: row['total_turns'] as number,
+          totalTokens: row['total_tokens'] as number,
+          messageCount: row['message_count'] as number | null,
+          errorCount: row['error_count'] as number | null,
+          topic: row['topic'] as string | null,
+          summary: row['summary'] as string | null,
           title,
-          costUsd: row.cost_usd as number | null,
-          mode: row.mode as string | null,
-          entrypoint: row.entrypoint as string | null,
-          tags: row.tags ? JSON.parse(row.tags as string) as string[] : null,
-          modelsUsed: row.models_used ? JSON.parse(row.models_used as string) as string[] : null,
+          costUsd: row['cost_usd'] as number | null,
+          mode: row['mode'] as string | null,
+          entrypoint: row['entrypoint'] as string | null,
+          tags: row['tags'] ? JSON.parse(row['tags'] as string) as string[] : null,
+          modelsUsed: row['models_used'] ? JSON.parse(row['models_used'] as string) as string[] : null,
           cacheTokens: {
-            creation: (row.total_cache_creation_tokens as number | null) ?? 0,
-            read: (row.total_cache_read_tokens as number | null) ?? 0,
+            creation: (row['total_cache_creation_tokens'] as number | null) ?? 0,
+            read: (row['total_cache_read_tokens'] as number | null) ?? 0,
             hitRatio: Math.round(
-              ((row.total_cache_read_tokens as number ?? 0) /
-                Math.max((row.total_cache_read_tokens as number ?? 0) + (row.total_cache_creation_tokens as number ?? 0), 1)) * 1000
+              ((row['total_cache_read_tokens'] as number ?? 0) /
+                Math.max((row['total_cache_read_tokens'] as number ?? 0) + (row['total_cache_creation_tokens'] as number ?? 0), 1)) * 1000
             ) / 10,
           },
-          contextCollapseCount: row.collapse_count as number,
+          contextCollapseCount: row['collapse_count'] as number,
         }
       })
 

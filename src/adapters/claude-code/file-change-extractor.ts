@@ -19,7 +19,7 @@ interface FileHistorySnapshot {
 }
 
 function isFileHistorySnapshot(parsed: Record<string, unknown>): parsed is Record<string, unknown> & FileHistorySnapshot {
-  return parsed.type === 'file-history-snapshot' && parsed.snapshot != null
+  return parsed['type'] === 'file-history-snapshot' && parsed['snapshot'] != null
 }
 
 export class FileChangeExtractor {

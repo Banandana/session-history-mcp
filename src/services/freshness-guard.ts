@@ -130,10 +130,10 @@ export class FreshnessGuard {
 
         // Format metrics for LLM
         const metricsBlock = [
-          `Session: ${session.duration_minutes ?? 0} min, ${session.total_turns ?? 0} turns, ${session.total_tokens ?? 0} tokens`,
-          `Errors: ${session.error_count ?? 0}, Corrections: ${session.correction_count ?? 0}`,
-          session.tool_counts ? `Tools: ${formatToolCounts(session.tool_counts as string)}` : null,
-          session.files_changed ? `Files: ${formatFilesChanged(session.files_changed as string)}` : null,
+          `Session: ${session['duration_minutes'] ?? 0} min, ${session['total_turns'] ?? 0} turns, ${session['total_tokens'] ?? 0} tokens`,
+          `Errors: ${session['error_count'] ?? 0}, Corrections: ${session['correction_count'] ?? 0}`,
+          session['tool_counts'] ? `Tools: ${formatToolCounts(session['tool_counts'] as string)}` : null,
+          session['files_changed'] ? `Files: ${formatFilesChanged(session['files_changed'] as string)}` : null,
         ].filter(Boolean).join('\n')
 
         const prompt = `${metricsBlock}\n\nSummarize this coding session in 2-3 sentences. Focus on what was accomplished and the outcome.`

@@ -17,8 +17,8 @@ export class PiMetadataParser {
         continue
       }
 
-      if (parsed.type !== 'message') continue
-      const message = parsed.message as { role?: string; content?: unknown } | undefined
+      if (parsed['type'] !== 'message') continue
+      const message = parsed['message'] as { role?: string; content?: unknown } | undefined
       if (message?.role !== 'user') continue
       if (!Array.isArray(message.content)) continue
 

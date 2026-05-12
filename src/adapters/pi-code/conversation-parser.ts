@@ -131,7 +131,7 @@ function translateBlocks(piBlocks: unknown): { blocks: ContentBlock[]; toolNames
 
   for (const raw of piBlocks as PiContentBlock[]) {
     if (!raw || typeof raw !== 'object') continue
-    const t = (raw as Record<string, unknown>).type
+    const t = (raw as Record<string, unknown>)['type']
     if (t === 'text') {
       const text = (raw as PiTextBlock).text
       blocks.push({ type: 'text', text: typeof text === 'string' ? text : '' })
@@ -168,7 +168,7 @@ function buildToolResultBlocks(msg: PiMessage): ContentBlock[] {
     // Pi toolResult content is `[{type:"text", text:"..."}]`. Collapse to the raw text or array.
     const texts: string[] = []
     for (const blk of content) {
-      if (blk && typeof blk === 'object' && (blk as Record<string, unknown>).type === 'text') {
+      if (blk && typeof blk === 'object' && (blk as Record<string, unknown>)['type'] === 'text') {
         const txt = (blk as { text?: unknown }).text
         if (typeof txt === 'string') texts.push(txt)
       }
@@ -188,7 +188,7 @@ function detectToolResultError(msg: PiMessage): boolean {
   if (msg.isError === true) return true
   if (Array.isArray(msg.content)) {
     for (const blk of msg.content as Record<string, unknown>[]) {
-      const txt = blk?.text
+      const txt = blk?.['text']
       if (typeof txt === 'string' && /(^|\s)error\b/i.test(txt)) return true
     }
   } else if (typeof msg.content === 'string') {

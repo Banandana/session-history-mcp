@@ -86,23 +86,23 @@ function extractContentBlocks(content: unknown): ContentBlock[] {
 }
 
 function normalizeContentBlock(raw: Record<string, unknown>): ContentBlock {
-  const block: Record<string, unknown> = { type: raw.type }
-  if (raw.type === 'text' && typeof raw.text === 'string') {
-    block.text = raw.text
+  const block: Record<string, unknown> = { type: raw['type'] }
+  if (raw['type'] === 'text' && typeof raw['text'] === 'string') {
+    block['text'] = raw['text']
   }
-  if (raw.type === 'thinking') {
-    block.thinking = typeof raw.thinking === 'string' ? raw.thinking : ''
-    if (raw.signature) block.signature = raw.signature
+  if (raw['type'] === 'thinking') {
+    block['thinking'] = typeof raw['thinking'] === 'string' ? raw['thinking'] : ''
+    if (raw['signature']) block['signature'] = raw['signature']
   }
-  if (raw.type === 'tool_use') {
-    block.id = raw.id
-    block.name = raw.name
-    block.input = raw.input
+  if (raw['type'] === 'tool_use') {
+    block['id'] = raw['id']
+    block['name'] = raw['name']
+    block['input'] = raw['input']
   }
-  if (raw.type === 'tool_result') {
-    block.tool_use_id = raw.tool_use_id
-    block.content = raw.content
-    if (raw.is_error) block.content = raw.content
+  if (raw['type'] === 'tool_result') {
+    block['tool_use_id'] = raw['tool_use_id']
+    block['content'] = raw['content']
+    if (raw['is_error']) block['content'] = raw['content']
   }
   return block as unknown as ContentBlock
 }
@@ -146,8 +146,8 @@ function detectToolResultError(line: RawJsonlLine): boolean {
       const result = block.content
       if (typeof result === 'string' && /error/i.test(result)) return true
       if (result && typeof result === 'object' && !Array.isArray(result)) {
-        if ((result as Record<string, unknown>).stderr &&
-            String((result as Record<string, unknown>).stderr).trim().length > 0) {
+        if ((result as Record<string, unknown>)['stderr'] &&
+            String((result as Record<string, unknown>)['stderr']).trim().length > 0) {
           return true
         }
       }
@@ -159,12 +159,12 @@ function detectToolResultError(line: RawJsonlLine): boolean {
 function detectToolUseResultError(line: RawJsonlLine): boolean {
   // Some lines have a top-level toolUseResult field
   const raw = line as Record<string, unknown>
-  const toolUseResult = raw.toolUseResult
+  const toolUseResult = raw['toolUseResult']
   if (toolUseResult === undefined) return false
   if (typeof toolUseResult === 'string') return /error/i.test(toolUseResult)
   if (toolUseResult && typeof toolUseResult === 'object') {
     const obj = toolUseResult as Record<string, unknown>
-    if (obj.stderr && String(obj.stderr).trim().length > 0) return true
+    if (obj['stderr'] && String(obj['stderr']).trim().length > 0) return true
   }
   return false
 }
