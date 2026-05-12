@@ -590,63 +590,72 @@ export class FreshnessGuard {
    * from JSONL metadata entries that the conversation parser skips.
    */
   private async syncSessionMetadata(sessionId: string, projectSlug?: string | null): Promise<void> {
-    const metadata = await this.registry.getSessionMetadata(sessionId)
-    if (!metadata) return
+    try {
+      const metadata = await this.registry.getSessionMetadata(sessionId)
+      if (!metadata) return
 
-    // Update session columns
-    this.db.prepare(`
-      UPDATE sessions SET
-        custom_title = COALESCE(?, custom_title),
-        ai_title = COALESCE(?, ai_title),
-        tags = ?,
-        mode = COALESCE(?, mode),
-        worktree_branch = COALESCE(?, worktree_branch),
-        speculation_time_saved_ms = ?,
-        branch = COALESCE(?, branch),
-        metadata_backfilled_at = ?
-      WHERE id = ?
-    `).run(
-      metadata.customTitle ?? null,
-      metadata.aiTitle ?? null,
-      metadata.tags.length > 0 ? JSON.stringify(metadata.tags) : null,
-      metadata.mode ?? null,
-      metadata.worktreeBranch ?? null,
-      metadata.speculationTimeSavedMs,
-      metadata.gitBranch ?? null,
-      new Date().toISOString(),
-      sessionId,
-    )
+      // Update session columns. Use COALESCE for every nullable text field so a
+      // missing value from this round never wipes a previously-stored one. For
+      // `tags`, only overwrite when the adapter reports non-empty tags.
+      const newTagsJson = metadata.tags.length > 0 ? JSON.stringify(metadata.tags) : null
+      this.db.prepare(`
+        UPDATE sessions SET
+          custom_title = COALESCE(?, custom_title),
+          ai_title = COALESCE(?, ai_title),
+          tags = COALESCE(?, tags),
+          mode = COALESCE(?, mode),
+          worktree_branch = COALESCE(?, worktree_branch),
+          speculation_time_saved_ms = COALESCE(?, speculation_time_saved_ms),
+          branch = COALESCE(?, branch)
+        WHERE id = ?
+      `).run(
+        metadata.customTitle ?? null,
+        metadata.aiTitle ?? null,
+        newTagsJson,
+        metadata.mode ?? null,
+        metadata.worktreeBranch ?? null,
+        metadata.speculationTimeSavedMs > 0 ? metadata.speculationTimeSavedMs : null,
+        metadata.gitBranch ?? null,
+        sessionId,
+      )
 
-    // Sync PR links
-    if (metadata.prLinks.length > 0) {
-      this.db.prepare('DELETE FROM pr_links WHERE session_id = ?').run(sessionId)
-      const insertPr = this.db.prepare(`
-        INSERT INTO pr_links (session_id, pr_number, pr_url, pr_repository, timestamp)
-        VALUES (?, ?, ?, ?, ?)
-      `)
-      for (const pr of metadata.prLinks) {
-        insertPr.run(sessionId, pr.prNumber, pr.prUrl, pr.prRepository, pr.timestamp)
+      // Sync PR links
+      if (metadata.prLinks.length > 0) {
+        this.db.prepare('DELETE FROM pr_links WHERE session_id = ?').run(sessionId)
+        const insertPr = this.db.prepare(`
+          INSERT INTO pr_links (session_id, pr_number, pr_url, pr_repository, timestamp)
+          VALUES (?, ?, ?, ?, ?)
+        `)
+        for (const pr of metadata.prLinks) {
+          insertPr.run(sessionId, pr.prNumber, pr.prUrl, pr.prRepository, pr.timestamp)
+        }
       }
-    }
 
-    // Sync context collapses
-    if (metadata.collapses.length > 0) {
-      this.db.prepare('DELETE FROM context_collapses WHERE session_id = ?').run(sessionId)
-      const insertCollapse = this.db.prepare(`
-        INSERT INTO context_collapses (session_id, collapse_id, summary, first_archived_uuid, last_archived_uuid)
-        VALUES (?, ?, ?, ?, ?)
-      `)
-      for (const c of metadata.collapses) {
-        insertCollapse.run(sessionId, c.collapseId, c.summary, c.firstArchivedUuid, c.lastArchivedUuid)
+      // Sync context collapses
+      if (metadata.collapses.length > 0) {
+        this.db.prepare('DELETE FROM context_collapses WHERE session_id = ?').run(sessionId)
+        const insertCollapse = this.db.prepare(`
+          INSERT INTO context_collapses (session_id, collapse_id, summary, first_archived_uuid, last_archived_uuid)
+          VALUES (?, ?, ?, ?, ?)
+        `)
+        for (const c of metadata.collapses) {
+          insertCollapse.run(sessionId, c.collapseId, c.summary, c.firstArchivedUuid, c.lastArchivedUuid)
+        }
       }
-    }
 
-    // Try to get cost data
-    if (projectSlug) {
-      const cost = await this.registry.getSessionCost(projectSlug, sessionId)
-      if (cost !== undefined) {
-        this.db.prepare('UPDATE sessions SET cost_usd = ? WHERE id = ?').run(cost, sessionId)
+      // Try to get cost data
+      if (projectSlug) {
+        const cost = await this.registry.getSessionCost(projectSlug, sessionId)
+        if (cost !== undefined) {
+          this.db.prepare('UPDATE sessions SET cost_usd = ? WHERE id = ?').run(cost, sessionId)
+        }
       }
+    } finally {
+      // Always stamp the watermark so backfillMissingBranch makes progress
+      // even when metadata is missing or unparseable. Without this stamp the
+      // 50-row LIMIT pulls the same sessions every cycle forever.
+      this.db.prepare('UPDATE sessions SET metadata_backfilled_at = ? WHERE id = ?')
+        .run(new Date().toISOString(), sessionId)
     }
   }
 
@@ -702,23 +711,13 @@ export class FreshnessGuard {
   }
 
   private async updateFileOffsets(sessionIds: readonly string[]): Promise<void> {
-    const { fileSize, fileExists } = await import('../infrastructure/file-system')
-    const { join } = await import('node:path')
-    const { listDirectories } = await import('../infrastructure/file-system')
-
-    const projectsDir = join(this.claudeDir, 'projects')
-    if (!(await fileExists(projectsDir))) return
-
-    const slugs = await listDirectories(projectsDir)
-
+    // Delegate to the registry — each adapter owns its on-disk layout.
+    // (Claude-code: ~/.claude/projects/<slug>/<id>.jsonl. Pi-code: ~/.pi/agent/sessions/...).
+    // Without this, pi-code sessions stay at offset 0 and get re-indexed every cycle.
     for (const sessionId of sessionIds) {
-      for (const slug of slugs) {
-        const candidate = join(projectsDir, slug, `${sessionId}.jsonl`)
-        if (await fileExists(candidate)) {
-          const size = await fileSize(candidate)
-          this.indexManager.updateSessionOffset(sessionId, size)
-          break
-        }
+      const size = await this.registry.getSessionSize(sessionId)
+      if (size !== undefined) {
+        this.indexManager.updateSessionOffset(sessionId, size)
       }
     }
   }

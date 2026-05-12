@@ -20,6 +20,7 @@ interface TurnFilters {
   readonly isCorrection?: boolean | undefined
   readonly roles?: readonly MessageRole[] | undefined
   readonly textPattern?: string | undefined
+  readonly textRegex?: RegExp | undefined
   readonly timeRange?: { readonly after?: string | undefined; readonly before?: string | undefined } | undefined
   readonly turnRange?: { readonly from?: number | undefined; readonly to?: number | undefined } | undefined
 }
@@ -165,16 +166,19 @@ export function messageMatchesFilters(
     if (before && msg.timestamp > before) return { matches: false }
   }
 
-  // Text pattern filter
+  // Text pattern filter — prefer caller-supplied pre-compiled regex. If only
+  // textPattern is given, compile lazily and fail closed on invalid regex
+  // (never silently pass every turn).
   if (filters.textPattern) {
-    const text = getTextContent(msg.contentBlocks)
-    let regex: RegExp
-    try {
-      regex = new RegExp(filters.textPattern, 'i')
-    } catch {
-      // Invalid regex pattern — skip filter gracefully
-      return { matches: true }
+    let regex = filters.textRegex
+    if (!regex) {
+      try {
+        regex = new RegExp(filters.textPattern, 'i')
+      } catch {
+        return { matches: false }
+      }
     }
+    const text = getTextContent(msg.contentBlocks)
     const match = regex.exec(text)
     if (!match) return { matches: false }
 
@@ -203,10 +207,6 @@ async function querySingleSession(
   ).get(sessionId) as SessionRow | undefined
 
   if (!session) {
-    return { results: [], total: 0 }
-  }
-
-  if (!validateSessionId(sessionId)) {
     return { results: [], total: 0 }
   }
 
@@ -419,6 +419,31 @@ export function registerQueryTurns(server: McpServer): void {
         }
       }
 
+      // Validate sessionId format BEFORE the DB lookup so a malformed id
+      // surfaces as an error instead of silently returning empty results.
+      if (params.sessionId && !validateSessionId(params.sessionId)) {
+        return {
+          content: [{ type: 'text' as const, text: JSON.stringify({
+            error: `Invalid session ID format: ${params.sessionId}`,
+          }, null, 2) }],
+        }
+      }
+
+      // Compile textPattern ONCE so an invalid regex surfaces as an error
+      // rather than silently passing every turn through the filter.
+      let textRegex: RegExp | undefined
+      if (params.textPattern) {
+        try {
+          textRegex = new RegExp(params.textPattern, 'i')
+        } catch (err) {
+          return {
+            content: [{ type: 'text' as const, text: JSON.stringify({
+              error: `Invalid textPattern regex: ${(err as Error).message}`,
+            }, null, 2) }],
+          }
+        }
+      }
+
       const freshness = await freshnessGuard.ensureFresh()
       const limit = params.limit ?? 50
       const rawOffset = params.cursor ? parseInt(params.cursor, 10) : 0
@@ -430,6 +455,7 @@ export function registerQueryTurns(server: McpServer): void {
         isCorrection: params.isCorrection,
         roles: params.roles as MessageRole[] | undefined,
         textPattern: params.textPattern,
+        textRegex,
         timeRange: params.timeRange,
         turnRange: params.turnRange,
       }

@@ -144,14 +144,12 @@ export class PiCodeAdapter implements SessionAdapter {
       }
     }
 
-    // Only reap session IDs that look like pi UUIDs we previously indexed.
-    // Don't reap claude UUIDs the claude-code adapter is responsible for.
-    // Heuristic: known ids that we don't recognize stay alone — adapter-registry
-    // unions the three lists across adapters, so claude-code's claim wins for its ids.
+    // Registry pre-filters `known.sessionOffsets` to ids this adapter claims,
+    // so any known id we don't see on disk really is gone.
     for (const knownId of known.sessionOffsets.keys()) {
-      if (seenIds.has(knownId)) continue
-      // We can't tell from id alone whether it belongs to us. Leave removal to the
-      // adapter that owns it; we only report sessions we positively know are gone.
+      if (!seenIds.has(knownId)) {
+        removedSessions.push(knownId)
+      }
     }
 
     return {
@@ -160,5 +158,16 @@ export class PiCodeAdapter implements SessionAdapter {
       changedSessions,
       removedSessions,
     }
+  }
+
+  async claimsSessionId(sessionId: string): Promise<boolean> {
+    const found = await this.discovery.findSessionFile(sessionId)
+    return found !== undefined
+  }
+
+  async getSessionSize(sessionId: string): Promise<number | undefined> {
+    const found = await this.discovery.findSessionFile(sessionId)
+    if (!found) return undefined
+    return fileSize(found.path)
   }
 }

@@ -118,7 +118,7 @@ export function registerInfrastructure(): void {
   const embeddingModel = process.env['VLLM_EMBEDDING_MODEL']
   let embeddingIndexer: EmbeddingIndexer | null = null
   if (embeddingModel) {
-    const embeddingDim = Number(process.env['VLLM_EMBEDDING_DIM'] ?? '1024')
+    const embeddingDim = Number(process.env['VLLM_EMBEDDING_DIM'] ?? '768')
     const embeddingBaseUrl = process.env['VLLM_EMBEDDING_URL'] ?? localLlmUrl
     const embeddingClient = new OpenAiLlmClient(localLlmUrl, localLlmModelFallback, {
       embeddingModel,

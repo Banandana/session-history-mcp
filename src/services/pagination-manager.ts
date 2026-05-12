@@ -10,19 +10,25 @@ export class PaginationManager {
 
   paginate<T>(
     items: readonly T[],
-    params: { cursor?: string | undefined; limit?: number | undefined }
+    params: { cursor?: string | undefined; limit?: number | undefined; total?: number | undefined }
   ): PaginatedResult<T> {
     const offset = params.cursor ? this.decodeCursor(params.cursor) : 0
     const limit = params.limit ?? this.defaultLimit
     const page = items.slice(offset, offset + limit)
-    const hasMore = offset + limit < items.length
-    const nextCursor = hasMore ? this.encodeCursor(offset + limit) : undefined
+    // If caller supplies a real total (e.g., from a COUNT query), trust it.
+    // Otherwise fall back to items.length — which is only accurate when the
+    // caller passed the full result set.
+    const totalEstimate = params.total ?? items.length
+    const hasMore = params.total !== undefined
+      ? offset + page.length < params.total
+      : offset + limit < items.length
+    const nextCursor = hasMore ? this.encodeCursor(offset + page.length) : undefined
 
     return {
       items: page,
       cursor: nextCursor,
       hasMore,
-      totalEstimate: items.length,
+      totalEstimate,
     }
   }
 

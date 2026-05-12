@@ -108,7 +108,8 @@ export class ClaudeCodeAdapter implements SessionAdapter {
 
     const projectsDir = join(this.claudeDir, 'projects')
     if (!(await fileExists(projectsDir))) {
-      // All known sessions are removed
+      // No projects dir — every id the registry passed us was already filtered
+      // to ids we previously claimed, so all are gone.
       const allKnown = Array.from(known.sessionOffsets.keys())
       return {
         isStale: allKnown.length > 0,
@@ -136,7 +137,8 @@ export class ClaudeCodeAdapter implements SessionAdapter {
       }
     }
 
-    // Find removed sessions
+    // The registry pre-filters `known.sessionOffsets` to ids this adapter claims,
+    // so any known id we don't see on disk really is gone.
     for (const knownId of known.sessionOffsets.keys()) {
       if (!seenIds.has(knownId)) {
         removedSessions.push(knownId)
@@ -149,6 +151,16 @@ export class ClaudeCodeAdapter implements SessionAdapter {
       changedSessions,
       removedSessions,
     }
+  }
+
+  async claimsSessionId(sessionId: string): Promise<boolean> {
+    return (await this.findSessionPath(sessionId)) !== undefined
+  }
+
+  async getSessionSize(sessionId: string): Promise<number | undefined> {
+    const path = await this.findSessionPath(sessionId)
+    if (!path) return undefined
+    return fileSize(path)
   }
 
   /**

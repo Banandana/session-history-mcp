@@ -92,7 +92,9 @@ export function registerSemanticSearch(server: McpServer): void {
       const pagination = container.get<PaginationManager>(TOKENS.PaginationManager)
       const formatter = container.get<ResponseFormatter>(TOKENS.ResponseFormatter)
       const dbConn = container.get<DatabaseConnection>(TOKENS.Database)
-      const indexer = container.get<EmbeddingIndexer | null>(TOKENS.EmbeddingIndexer)
+      const indexer = container.isBound(TOKENS.EmbeddingIndexer)
+        ? container.get<EmbeddingIndexer>(TOKENS.EmbeddingIndexer)
+        : null
       const db = dbConn.get()
 
       if (!indexer) {

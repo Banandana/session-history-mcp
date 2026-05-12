@@ -15,7 +15,7 @@ const SORT_COLUMNS: Record<string, string> = {
   most_tokens: 'total_tokens DESC',
   errors: 'error_count DESC',
   cost: 'cost_usd IS NULL, cost_usd DESC',
-  cache_efficiency: 'CAST(COALESCE(total_cache_read_tokens, 0) AS REAL) / CASE WHEN (COALESCE(total_cache_read_tokens, 0) + COALESCE(total_cache_creation_tokens, 0)) = 0 THEN 1 ELSE (COALESCE(total_cache_read_tokens, 0) + COALESCE(total_cache_creation_tokens, 0)) END ASC',
+  cache_efficiency: 'CAST(COALESCE(total_cache_read_tokens, 0) AS REAL) / CASE WHEN (COALESCE(total_cache_read_tokens, 0) + COALESCE(total_cache_creation_tokens, 0)) = 0 THEN 1 ELSE (COALESCE(total_cache_read_tokens, 0) + COALESCE(total_cache_creation_tokens, 0)) END DESC',
 }
 
 export function registerListSessions(server: McpServer): void {

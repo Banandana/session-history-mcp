@@ -53,9 +53,15 @@ export function registerSearch(server: McpServer): void {
         limit: paginationOffset + limit + 1,
       })
 
+      const total = searchIndex.searchCount(params.query, {
+        ...(projectSlug !== undefined ? { projectSlug } : {}),
+        ...(params.sessionId !== undefined ? { sessionId: params.sessionId } : {}),
+      })
+
       const page = pagination.paginate(results, {
         cursor: params.cursor,
         limit,
+        total,
       })
 
       const meta = formatter.formatMeta(freshness)

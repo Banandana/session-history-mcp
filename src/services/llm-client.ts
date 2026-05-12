@@ -80,7 +80,12 @@ export class OpenAiLlmClient implements LlmClient, EmbeddingClient {
         const response = await fetch(`${this.baseUrl}/models`, {
           signal: AbortSignal.timeout(5000),
         })
-        if (!response.ok) return this.modelFallback
+        if (!response.ok) {
+          // Clear the cached in-flight promise so the next call retries.
+          // Only success caches; transient failures must not poison.
+          this.discoveryPromise = null
+          return this.modelFallback
+        }
         const body = await response.json() as ModelsResponse
         const id = body.data[0]?.id
         if (typeof id === 'string' && id.length > 0) {
@@ -90,6 +95,7 @@ export class OpenAiLlmClient implements LlmClient, EmbeddingClient {
       } catch {
         // discovery failed — fall through to the constructor fallback
       }
+      this.discoveryPromise = null
       return this.modelFallback
     })()
 

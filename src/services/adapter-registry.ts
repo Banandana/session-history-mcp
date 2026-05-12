@@ -13,6 +13,8 @@ import type {
 
 export class AdapterRegistry {
   private readonly adapters: SessionAdapter[] = []
+  /** sessionId -> owning adapter. Populated lazily by discoverSessions / checkFreshness / getOwner probes. */
+  private readonly ownerCache = new Map<string, SessionAdapter>()
 
   registerAdapter(adapter: SessionAdapter): void {
     this.adapters.push(adapter)
@@ -20,6 +22,19 @@ export class AdapterRegistry {
 
   getAdapters(): readonly SessionAdapter[] {
     return this.adapters
+  }
+
+  /** Cache helper: probe adapters via claimsSessionId() if owner is unknown. */
+  private async getOwner(sessionId: string): Promise<SessionAdapter | undefined> {
+    const cached = this.ownerCache.get(sessionId)
+    if (cached) return cached
+    for (const adapter of this.adapters) {
+      if (await adapter.claimsSessionId(sessionId)) {
+        this.ownerCache.set(sessionId, adapter)
+        return adapter
+      }
+    }
+    return undefined
   }
 
   async *discoverProjects(): AsyncIterable<ProjectMeta> {
@@ -30,23 +45,41 @@ export class AdapterRegistry {
 
   async *discoverSessions(project?: string): AsyncIterable<SessionMeta> {
     for (const adapter of this.adapters) {
-      yield* adapter.discoverSessions(project)
+      for await (const session of adapter.discoverSessions(project)) {
+        this.ownerCache.set(session.id, adapter)
+        yield session
+      }
     }
   }
 
   async *getMessages(sessionId: string): AsyncIterable<NormalizedMessage> {
+    const owner = await this.getOwner(sessionId)
+    if (owner) {
+      yield* owner.getMessages(sessionId)
+      return
+    }
     for (const adapter of this.adapters) {
       yield* adapter.getMessages(sessionId)
     }
   }
 
   async *getFileChanges(sessionId: string): AsyncIterable<FileChange> {
+    const owner = await this.getOwner(sessionId)
+    if (owner) {
+      yield* owner.getFileChanges(sessionId)
+      return
+    }
     for (const adapter of this.adapters) {
       yield* adapter.getFileChanges(sessionId)
     }
   }
 
   async *getSubagents(sessionId: string): AsyncIterable<SubagentMeta> {
+    const owner = await this.getOwner(sessionId)
+    if (owner) {
+      yield* owner.getSubagents(sessionId)
+      return
+    }
     for (const adapter of this.adapters) {
       yield* adapter.getSubagents(sessionId)
     }
@@ -59,6 +92,8 @@ export class AdapterRegistry {
   }
 
   async getSessionMetadata(sessionId: string): Promise<SessionMetadataResult | undefined> {
+    const owner = await this.getOwner(sessionId)
+    if (owner) return owner.getSessionMetadata(sessionId)
     for (const adapter of this.adapters) {
       const result = await adapter.getSessionMetadata(sessionId)
       if (result) return result
@@ -67,8 +102,20 @@ export class AdapterRegistry {
   }
 
   async getSessionCost(projectSlug: string, sessionId: string): Promise<number | undefined> {
+    const owner = await this.getOwner(sessionId)
+    if (owner) return owner.getSessionCost(projectSlug, sessionId)
     for (const adapter of this.adapters) {
       const result = await adapter.getSessionCost(projectSlug, sessionId)
+      if (result !== undefined) return result
+    }
+    return undefined
+  }
+
+  async getSessionSize(sessionId: string): Promise<number | undefined> {
+    const owner = await this.getOwner(sessionId)
+    if (owner) return owner.getSessionSize(sessionId)
+    for (const adapter of this.adapters) {
+      const result = await adapter.getSessionSize(sessionId)
       if (result !== undefined) return result
     }
     return undefined
@@ -85,35 +132,56 @@ export class AdapterRegistry {
   async checkFreshness(known: IndexState): Promise<FreshnessResult> {
     const newSessions: string[] = []
     const changedSessions: string[] = []
+    const removedSessions: string[] = []
 
-    // Multi-adapter removal semantics: a session is "really removed" only if EVERY
-    // adapter agrees it's gone. Each individual adapter's checkFreshness flags any
-    // id it doesn't own as removed (claude-code adapter does this), so unioning
-    // removedSessions would nuke any other adapter's sessions on every sync.
-    // Intersection: start with the set from the first adapter, keep paring down.
-    let removedIntersection: Set<string> | undefined
-
+    // Partition known sessionOffsets by claiming adapter. Ids that no adapter
+    // claims become "orphans" and are reported as removed — they no longer exist
+    // anywhere on disk.
+    const perAdapterOffsets = new Map<SessionAdapter, Map<string, number>>()
     for (const adapter of this.adapters) {
-      const result = await adapter.checkFreshness(known)
-      newSessions.push(...result.newSessions)
-      changedSessions.push(...result.changedSessions)
-
-      const removedSet = new Set(result.removedSessions)
-      if (removedIntersection === undefined) {
-        removedIntersection = removedSet
-      } else {
-        for (const id of removedIntersection) {
-          if (!removedSet.has(id)) removedIntersection.delete(id)
+      perAdapterOffsets.set(adapter, new Map())
+    }
+    const orphanIds: string[] = []
+    for (const [id, offset] of known.sessionOffsets) {
+      let owner: SessionAdapter | undefined = this.ownerCache.get(id)
+      if (!owner) {
+        for (const adapter of this.adapters) {
+          if (await adapter.claimsSessionId(id)) {
+            owner = adapter
+            this.ownerCache.set(id, adapter)
+            break
+          }
         }
       }
+      if (owner) {
+        perAdapterOffsets.get(owner)!.set(id, offset)
+      } else {
+        orphanIds.push(id)
+      }
     }
+    removedSessions.push(...orphanIds)
 
-    // Also: any id reported new or changed by ANY adapter must NOT be removed.
-    const claimed = new Set<string>([...newSessions, ...changedSessions])
-    const removedSessions: string[] = []
-    if (removedIntersection) {
-      for (const id of removedIntersection) {
-        if (!claimed.has(id)) removedSessions.push(id)
+    // Each adapter sees only its own slice of `known.sessionOffsets`. Removals
+    // are taken at face value and unioned (no intersection across adapters).
+    for (const adapter of this.adapters) {
+      const filteredOffsets = perAdapterOffsets.get(adapter)!
+      const filteredKnown: IndexState = {
+        sessionOffsets: filteredOffsets,
+        lastSyncAt: known.lastSyncAt,
+      }
+      const result = await adapter.checkFreshness(filteredKnown)
+      for (const id of result.newSessions) {
+        this.ownerCache.set(id, adapter)
+        newSessions.push(id)
+      }
+      for (const id of result.changedSessions) {
+        this.ownerCache.set(id, adapter)
+        changedSessions.push(id)
+      }
+      for (const id of result.removedSessions) {
+        // Owner is gone — drop from cache so future probes re-resolve.
+        this.ownerCache.delete(id)
+        removedSessions.push(id)
       }
     }
 

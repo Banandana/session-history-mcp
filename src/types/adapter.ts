@@ -40,4 +40,8 @@ export interface SessionAdapter {
   getSessionCost(projectSlug: string, sessionId: string): Promise<number | undefined>
   resolveProject(path: string): Promise<ProjectMeta | undefined>
   checkFreshness(known: IndexState): Promise<FreshnessResult>
+  /** Returns true if this adapter is the owner of `sessionId` (i.e. can locate its underlying log). */
+  claimsSessionId(sessionId: string): Promise<boolean>
+  /** Returns the current on-disk size of the session log, or undefined if not found. */
+  getSessionSize(sessionId: string): Promise<number | undefined>
 }

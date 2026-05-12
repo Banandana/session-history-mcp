@@ -154,6 +154,16 @@ export class EmbeddingIndexer {
 
       if (vectors.length !== batch.length) break
 
+      // First-batch dimension mismatch is a configuration error, not a
+      // transient issue — abort loudly instead of silently looping forever
+      // (every row would fail the vector.length !== this.dim check below
+      // and `indexed` would never advance).
+      if (i === 0 && vectors[0] && vectors[0].length !== this.dim) {
+        throw new Error(
+          `Embedding dimension mismatch: configured VLLM_EMBEDDING_DIM=${this.dim} but provider returned ${vectors[0].length}-dim vectors. Set VLLM_EMBEDDING_DIM=${vectors[0].length} or change the model.`,
+        )
+      }
+
       this.db.transaction(() => {
         for (let j = 0; j < batch.length; j++) {
           const vector = vectors[j]

@@ -46,6 +46,8 @@ function createMockRegistry(options: {
     },
     async *getMemory(): AsyncIterable<MemoryEntry> {},
     async getSessionMetadata() { return undefined },
+    async claimsSessionId(sessionId: string) { return sessions.some(s => s.id === sessionId) },
+    async getSessionSize(sessionId: string) { return sessions.some(s => s.id === sessionId) ? 1 : undefined },
     async getSessionCost() { return undefined },
     async resolveProject(): Promise<ProjectMeta | undefined> { return undefined },
     async checkFreshness(known: IndexState): Promise<FreshnessResult> {
@@ -407,6 +409,8 @@ describe('FreshnessGuard — generateSummaries', () => {
       async *getSubagents() {},
       async *getMemory() {},
       async getSessionMetadata() { return undefined },
+    async claimsSessionId(sessionId: string) { return sessions.some(s => s.id === sessionId) },
+    async getSessionSize(sessionId: string) { return sessions.some(s => s.id === sessionId) ? 1 : undefined },
       async getSessionCost() { return undefined },
       async resolveProject() { return undefined },
       async checkFreshness(known: IndexState): Promise<FreshnessResult> {
@@ -564,6 +568,8 @@ describe('FreshnessGuard — session discovery optimization', () => {
       async *getSubagents() {},
       async *getMemory() {},
       async getSessionMetadata() { return undefined },
+    async claimsSessionId(sessionId: string) { return sessions.some(s => s.id === sessionId) },
+    async getSessionSize(sessionId: string) { return sessions.some(s => s.id === sessionId) ? 1 : undefined },
       async getSessionCost() { return undefined },
       async resolveProject() { return undefined },
       async checkFreshness(known: IndexState): Promise<FreshnessResult> {
