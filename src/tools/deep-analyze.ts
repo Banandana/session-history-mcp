@@ -7,7 +7,7 @@ import type { FreshnessGuard } from '../services/freshness-guard'
 import type { ResponseFormatter } from '../services/response-formatter'
 import type { DatabaseConnection } from '../infrastructure/database'
 import type { NormalizedMessage } from '../types'
-import type { FallbackLlmClient } from '../services/llm-client'
+import type { OpenAiLlmClient } from '../services/llm-client'
 import { ConversationParser } from '../adapters/claude-code/conversation-parser'
 
 function validateSessionId(id: string): boolean {
@@ -74,7 +74,7 @@ Be direct and specific. Reference turn numbers when citing examples. Don't softe
 export function registerDeepAnalyze(server: McpServer): void {
   server.tool(
     'deep_analyze',
-    'Send an entire session to Opus for comprehensive analysis. Expensive — uses Anthropic API with full session context. Returns quality assessment, behavioral patterns, token efficiency, and actionable recommendations. Rate limits and API errors surface as real MCP errors (isError: true); callers should handle 429 responses with backoff.',
+    'Send an entire session to the local LLM for comprehensive analysis. Returns quality assessment, behavioral patterns, token efficiency, and actionable recommendations. Errors surface as real MCP errors (isError: true).',
     {
       sessionId: z.string().describe('Session ID to analyze'),
       focus: z.string().max(500).optional().describe('Optional focus area for the analysis (e.g., "error handling patterns", "tool selection decisions")'),
@@ -84,29 +84,18 @@ export function registerDeepAnalyze(server: McpServer): void {
       const freshnessGuard = container.get<FreshnessGuard>(TOKENS.FreshnessGuard)
       const formatter = container.get<ResponseFormatter>(TOKENS.ResponseFormatter)
       const dbConn = container.get<DatabaseConnection>(TOKENS.Database)
-      const llmClient = container.get<FallbackLlmClient>(TOKENS.LlmClient)
+      const llmClient = container.get<OpenAiLlmClient>(TOKENS.LlmClient)
       const db = dbConn.get()
       const claudeDir = container.get<string>(TOKENS.ClaudeDataDir)
 
       const freshness = await freshnessGuard.ensureFresh()
 
-      // Require Anthropic API specifically — this is an expensive operation
       if (!(await llmClient.isAvailable())) {
-        const reason = 'deep_analyze requires ANTHROPIC_API_KEY. Set it in the environment where the MCP server runs.'
-        return {
-          content: [{
-            type: 'text' as const,
-            text: JSON.stringify({ error: reason }, null, 2),
-          }],
-        }
-      }
-      const anthropic = llmClient.getAnthropicClient()
-      if (!anthropic) {
         return {
           content: [{
             type: 'text' as const,
             text: JSON.stringify({
-              error: 'deep_analyze requires ANTHROPIC_API_KEY. Set it in the environment where the MCP server runs.',
+              error: `deep_analyze: local LLM at ${llmClient.label} is not reachable.`,
             }, null, 2),
           }],
         }
@@ -175,18 +164,18 @@ export function registerDeepAnalyze(server: McpServer): void {
 
       const maxResponseTokens = params.maxResponseTokens ?? 16384
 
-      // Rate limits, auth failures, and model errors must surface as real
-      // MCP errors (isError: true) so callers can distinguish them from a
-      // successful analysis. Rethrow so the SDK marks the response as an
-      // error rather than wrapping it in a success payload.
-      const analysis = await anthropic.analyze(systemPrompt, userContent, maxResponseTokens)
+      // Model and HTTP errors must surface as real MCP errors (isError: true)
+      // so callers can distinguish them from a successful analysis. Let them
+      // bubble — the SDK marks the response as an error rather than wrapping
+      // it in a success payload.
+      const analysis = await llmClient.analyze(systemPrompt, userContent, maxResponseTokens)
 
       const data = {
         sessionId: params.sessionId,
         title: session['custom_title'] ?? session['ai_title'] ?? session['topic'],
         analyzedTurns: messages.length,
         focus: params.focus ?? null,
-        model: anthropic.label,
+        model: llmClient.label,
         analysis,
       }
 

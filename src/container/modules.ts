@@ -78,11 +78,13 @@ export function registerInfrastructure(): void {
   const turnIndexer = new TurnIndexer(db)
   container.bind<TurnIndexer>(TOKENS.TurnIndexer).toConstantValue(turnIndexer)
 
-  // LLM clients — legacy local + fallback (local-first, Anthropic as fallback).
+  // LLM clients — local only. LocalLlmClient is the legacy summarization
+  // helper used by FreshnessGuard; OpenAiLlmClient is the general-purpose
+  // backend bound under TOKENS.LlmClient for tools like deep_analyze.
   const llmClient = new LocalLlmClient(localLlmUrl, localLlmModel)
   container.bind<LocalLlmClient>(TOKENS.LocalLlmClient).toConstantValue(llmClient)
-  const fallbackLlmClient = createLlmClient(localLlmUrl, localLlmModel)
-  container.bind(TOKENS.LlmClient).toConstantValue(fallbackLlmClient)
+  const openAiLlmClient = createLlmClient(localLlmUrl, localLlmModel)
+  container.bind<OpenAiLlmClient>(TOKENS.LlmClient).toConstantValue(openAiLlmClient)
 
   // Services
   const tokenBudget = new TokenBudgetManager()

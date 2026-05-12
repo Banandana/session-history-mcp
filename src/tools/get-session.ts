@@ -5,7 +5,7 @@ import { TOKENS } from '../container/tokens'
 import type { FreshnessGuard } from '../services/freshness-guard'
 import type { ResponseFormatter } from '../services/response-formatter'
 import type { DatabaseConnection } from '../infrastructure/database'
-import type { FallbackLlmClient } from '../services/llm-client'
+import type { OpenAiLlmClient } from '../services/llm-client'
 
 function formatTopTools(json: string): string {
   try {
@@ -306,7 +306,7 @@ export function registerGetSession(server: McpServer): void {
             const messageCount = session.message_count ?? session.total_turns ?? 0
 
             if (messageCount >= 3) {
-              const llmClient = container.get<FallbackLlmClient>(TOKENS.LlmClient)
+              const llmClient = container.get<OpenAiLlmClient>(TOKENS.LlmClient)
               const available = await llmClient.isAvailable()
               if (available) {
                 const metricsBlock = [

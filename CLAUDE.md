@@ -118,7 +118,7 @@ same `FreshnessGuard` pipeline as MCP tool calls.
 | `get_changes` | File operations tracked across sessions |
 | `get_memory` | Cross-project memory access |
 | `analyze` | Pattern discovery — errors, corrections, tool failures, cache efficiency, model usage |
-| `deep_analyze` | Send entire session to Opus 1M for comprehensive quality analysis (requires ANTHROPIC_API_KEY) |
+| `deep_analyze` | Send entire session to the local LLM for comprehensive quality analysis |
 | `context_audit` | Context usage auditing — cost, token attribution, cache, collapses, session profiles |
 | `claude_md_effectiveness` | Before/after metric deltas around CLAUDE.md edit events — measures whether agent self-corrections worked |
 | `get_audit_history` | "When did I last audit X?" — returns last successful invocation per (tool, canonical params) so agents can fill the gap with `since: lastCalledAt`. Includes a `followUp` block. Mode `raw` returns the unfiltered call log |
@@ -183,12 +183,9 @@ FTS indexes full message content, not truncated previews:
 - Search results include `matchSnippet` with `»highlighted«` context
 - Schema: V4 migration (adds `search_text` column, rebuilds FTS table, forces re-index)
 
-## LLM Client Architecture (2026-04-02)
+## LLM Client Architecture
 
-Dual-backend LLM support via `FallbackLlmClient`:
-- **AnthropicLlmClient**: Native Messages API, requires `ANTHROPIC_API_KEY` or `FANTHROPIC_API_KEY`
-- **OpenAiLlmClient**: OpenAI-compatible (local vLLM at 10.1.10.20)
-- Priority: Anthropic > local. Background summarization uses local (cheap); `deep_analyze` requires Anthropic (expensive, full session to Opus 1M)
+Single backend: `OpenAiLlmClient` — OpenAI-compatible HTTP against `LOCAL_LLM_URL` (default `http://localhost:30000/v1`, currently Qwen3.5-122B-A10B-AWQ on SGLang with 524K context). Used for background summarization (FreshnessGuard) and `deep_analyze`. The Anthropic remote backend was removed.
 
 ## Efficiency Fixes (2026-04-02)
 

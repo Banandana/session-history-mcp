@@ -60,7 +60,7 @@ This is the feedback loop that makes autonomous agents viable long-term. Not jus
 | `get_changes` | File operations tracked across sessions — which files were created/edited when |
 | `get_memory` | Cross-project memory access — user preferences, feedback, project notes |
 | `analyze` | Aggregate pattern discovery — errors, corrections, tool failures, costly sessions, hot files |
-| `deep_analyze` | Send entire session to Opus for comprehensive quality analysis (requires ANTHROPIC_API_KEY) |
+| `deep_analyze` | Send entire session to the local LLM for comprehensive quality analysis |
 
 ## Setup
 
