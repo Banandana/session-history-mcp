@@ -339,6 +339,15 @@ export class IndexManager {
     return row?.byte_offset ?? 0
   }
 
+  getAllSessionOffsets(): Map<string, number> {
+    const rows = this.db.prepare(
+      'SELECT id, byte_offset FROM sessions'
+    ).all() as { id: string; byte_offset: number }[]
+    const out = new Map<string, number>()
+    for (const r of rows) out.set(r.id, r.byte_offset)
+    return out
+  }
+
   updateSessionOffset(sessionId: string, offset: number): void {
     this.db.prepare(
       'UPDATE sessions SET byte_offset = ? WHERE id = ?'

@@ -21,8 +21,23 @@ function formatFilesChanged(json: string): string {
   } catch { return '' }
 }
 
+const FRESHNESS_DEBOUNCE_MS = 2000
+
 export class FreshnessGuard {
   private readonly db: Database.Database
+  private lastFreshAt = 0
+  private lastResult: {
+    syncDurationMs: number
+    indexedAt: string
+    sessionCount: number
+    staleSessions: number
+  } | null = null
+  private inflight: Promise<{
+    syncDurationMs: number
+    indexedAt: string
+    sessionCount: number
+    staleSessions: number
+  }> | null = null
 
   constructor(
     private readonly registry: AdapterRegistry,
@@ -42,17 +57,37 @@ export class FreshnessGuard {
     sessionCount: number
     staleSessions: number
   }> {
+    // Debounce: serve cached result for bursts of calls within the window.
+    if (this.lastResult && Date.now() - this.lastFreshAt < FRESHNESS_DEBOUNCE_MS) {
+      return this.lastResult
+    }
+    // Coalesce: if a sync is already running, await it instead of starting a second.
+    if (this.inflight) return this.inflight
+
+    this.inflight = this.runEnsureFresh()
+    try {
+      const r = await this.inflight
+      this.lastResult = r
+      this.lastFreshAt = Date.now()
+      return r
+    } finally {
+      this.inflight = null
+    }
+  }
+
+  private async runEnsureFresh(): Promise<{
+    syncDurationMs: number
+    indexedAt: string
+    sessionCount: number
+    staleSessions: number
+  }> {
     const start = Date.now()
 
     // 1. Ensure schema exists
     this.indexManager.ensureSchema()
 
-    // 2. Build IndexState from current database
-    const knownIds = this.indexManager.getKnownSessionIds()
-    const offsets = new Map<string, number>()
-    for (const id of knownIds) {
-      offsets.set(id, this.indexManager.getSessionOffset(id))
-    }
+    // 2. Build IndexState from current database (single query, not N+1)
+    const offsets = this.indexManager.getAllSessionOffsets()
     const known: IndexState = {
       sessionOffsets: offsets,
       lastSyncAt: new Date().toISOString(),
