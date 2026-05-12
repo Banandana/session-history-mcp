@@ -31,7 +31,7 @@ interface ModelsResponse {
 }
 
 /**
- * OpenAI-compatible API client (local vLLM, ollama, etc.)
+ * OpenAI-compatible API client (SGLang, ollama, llama.cpp, etc.)
  *
  * The chat-completions `model` field is required by the OpenAI wire schema
  * but most single-model local servers ignore the value. We discover the

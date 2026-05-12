@@ -10,7 +10,7 @@ Get the Session History MCP server running on a new machine.
 - **Git** — to clone the repo
 
 Optional:
-- **Local LLM** — for narrative summaries and intent analysis. Any OpenAI-compatible API (vLLM, llama.cpp, Ollama with OpenAI compat, etc.)
+- **Local LLM** — for narrative summaries and intent analysis. Any OpenAI-compatible API (SGLang, llama.cpp, Ollama with OpenAI compat, etc.)
 
 ## Installation
 
@@ -90,10 +90,13 @@ container.register(TOKENS.LocalLlmModel, { useValue: 'your-model-name' })
 
 Any OpenAI-compatible `/v1/chat/completions` endpoint works:
 
-- **vLLM**: `python -m vllm.entrypoints.openai.api_server --model your-model`
+- **SGLang**: `python -m sglang.launch_server --model your-model`
 - **Ollama**: `ollama serve` (uses `http://localhost:11434/v1`)
 - **llama.cpp server**: `./server -m model.gguf --port 8000`
 - **LM Studio**: Enable the local server in settings
+
+For embeddings (`semantic_search`), any OpenAI-compatible `/v1/embeddings`
+endpoint works — e.g. **TEI** (`text-embeddings-inference`) for ModernBERT.
 
 The LLM is used for:
 - Generating 2-3 sentence session summaries (async, background)

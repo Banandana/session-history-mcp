@@ -41,7 +41,7 @@ async function main(): Promise<void> {
   // handle it. The CLI exits as soon as ensureFresh resolves, which kills
   // that promise — so the CLI must await the indexer explicitly to be
   // useful as a Stop hook.
-  // The container only binds EmbeddingIndexer when VLLM_EMBEDDING_MODEL is set,
+  // The container only binds EmbeddingIndexer when EMBEDDING_MODEL is set,
   // so check isBound() instead of catching the resolve throw.
   const indexer: EmbeddingIndexer | null = container.isBound(TOKENS.EmbeddingIndexer)
     ? container.get<EmbeddingIndexer>(TOKENS.EmbeddingIndexer)

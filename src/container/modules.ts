@@ -110,16 +110,16 @@ export function registerInfrastructure(): void {
   contextAuditor.ensureIndexes()
   container.bind<ContextAuditor>(TOKENS.ContextAuditor).toConstantValue(contextAuditor)
 
-  // Embedding indexer — opt-in via VLLM_EMBEDDING_MODEL env var. When unset, we
+  // Embedding indexer — opt-in via EMBEDDING_MODEL env var. When unset, we
   // simply don't bind the token; semantic_search uses container.isBound() to
   // surface a clean "feature disabled" error. Inversify's toConstantValue(null)
   // is legal but downstream consumers shouldn't have to null-check; checking
   // isBound is cleaner.
-  const embeddingModel = process.env['VLLM_EMBEDDING_MODEL']
+  const embeddingModel = process.env['EMBEDDING_MODEL']
   let embeddingIndexer: EmbeddingIndexer | null = null
   if (embeddingModel) {
-    const embeddingDim = Number(process.env['VLLM_EMBEDDING_DIM'] ?? '768')
-    const embeddingBaseUrl = process.env['VLLM_EMBEDDING_URL'] ?? localLlmUrl
+    const embeddingDim = Number(process.env['EMBEDDING_DIM'] ?? '768')
+    const embeddingBaseUrl = process.env['EMBEDDING_URL'] ?? localLlmUrl
     const embeddingClient = new OpenAiLlmClient(localLlmUrl, localLlmModelFallback, {
       embeddingModel,
       embeddingDim,

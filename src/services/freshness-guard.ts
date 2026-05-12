@@ -76,7 +76,7 @@ export class FreshnessGuard {
     void this.generateSummaries().catch(() => { /* summarization failure is non-critical */ })
 
     // 5b. Fire-and-forget embedding indexing — only runs if an embedding
-    // backend was configured via VLLM_EMBEDDING_MODEL.
+    // backend was configured via EMBEDDING_MODEL.
     if (this.embeddingIndexer) {
       void this.embeddingIndexer
         .indexPending()

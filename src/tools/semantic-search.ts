@@ -23,7 +23,7 @@ import type { EmbeddingIndexer } from '../services/embedding-indexer'
  *  - Enriched results: role, toolNames, turnIndex, truncated contentPreview
  *  - ensureFresh() before query so new messages are indexed first
  *
- * Opt-in: requires VLLM_EMBEDDING_MODEL env var. When not configured, the
+ * Opt-in: requires EMBEDDING_MODEL env var. When not configured, the
  * tool returns a clear error explaining how to enable it rather than
  * silently disabling itself.
  */
@@ -65,7 +65,7 @@ function truncate(text: string, max: number): string {
 export function registerSemanticSearch(server: McpServer): void {
   server.tool(
     'semantic_search',
-    'Vector KNN search over message embeddings. Finds semantically similar messages even when they share no keywords with the query — complements the FTS-based `search` tool. Supports the same scoping filters (project, sessionId, date range) and pagination as `search`. Requires VLLM_EMBEDDING_MODEL env var to be set on the MCP server.',
+    'Vector KNN search over message embeddings. Finds semantically similar messages even when they share no keywords with the query — complements the FTS-based `search` tool. Supports the same scoping filters (project, sessionId, date range) and pagination as `search`. Requires EMBEDDING_MODEL env var to be set on the MCP server.',
     {
       query: z.string().min(1).describe('Natural language query'),
       project: z.string().optional().describe('Filter by project slug'),
@@ -105,7 +105,7 @@ export function registerSemanticSearch(server: McpServer): void {
               text: JSON.stringify(
                 {
                   error:
-                    'semantic_search is disabled. Set VLLM_EMBEDDING_MODEL (and optionally VLLM_EMBEDDING_URL, VLLM_EMBEDDING_DIM) in the MCP server environment to enable it.',
+                    'semantic_search is disabled. Set EMBEDDING_MODEL (and optionally EMBEDDING_URL, EMBEDDING_DIM) in the MCP server environment to enable it.',
                 },
                 null,
                 2,

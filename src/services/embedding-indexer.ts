@@ -160,7 +160,7 @@ export class EmbeddingIndexer {
       // and `indexed` would never advance).
       if (i === 0 && vectors[0] && vectors[0].length !== this.dim) {
         throw new Error(
-          `Embedding dimension mismatch: configured VLLM_EMBEDDING_DIM=${this.dim} but provider returned ${vectors[0].length}-dim vectors. Set VLLM_EMBEDDING_DIM=${vectors[0].length} or change the model.`,
+          `Embedding dimension mismatch: configured EMBEDDING_DIM=${this.dim} but provider returned ${vectors[0].length}-dim vectors. Set EMBEDDING_DIM=${vectors[0].length} or change the model.`,
         )
       }
 

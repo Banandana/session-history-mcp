@@ -5,7 +5,7 @@
  * schema-load overhead once, not once per 500 messages.
  *
  * Usage (env vars required):
- *   VLLM_EMBEDDING_URL=... VLLM_EMBEDDING_MODEL=... VLLM_EMBEDDING_DIM=... \
+ *   EMBEDDING_URL=... EMBEDDING_MODEL=... EMBEDDING_DIM=... \
  *     npx tsx src/cli/reindex-embeddings.ts [batchBudget]
  *
  * batchBudget defaults to 2000; the loop exits when a cycle indexes 0.
@@ -29,7 +29,7 @@ async function main(): Promise<void> {
 
   const indexer = container.get<EmbeddingIndexer | null>(TOKENS.EmbeddingIndexer)
   if (!indexer) {
-    process.stderr.write('reindex-embeddings: VLLM_EMBEDDING_MODEL is not set — nothing to do\n')
+    process.stderr.write('reindex-embeddings: EMBEDDING_MODEL is not set — nothing to do\n')
     process.exit(1)
   }
 
