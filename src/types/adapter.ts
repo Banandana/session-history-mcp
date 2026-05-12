@@ -1,5 +1,5 @@
 import type { ProjectMeta } from './project'
-import type { SessionMeta, NormalizedMessage, FileChange, SubagentMeta, SessionMetadataEntry, PrLink, ContextCollapse } from './session'
+import type { SessionMeta, NormalizedMessage, FileChange, SubagentMeta, PrLink, ContextCollapse } from './session'
 import type { MemoryEntry } from './project'
 
 export interface IndexState {

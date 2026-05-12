@@ -1,4 +1,4 @@
-import { describe, it, expect, beforeAll } from 'vitest'
+import { describe, it, expect } from 'vitest'
 import { join } from 'node:path'
 import { ClaudeCodeAdapter } from './index'
 import type {

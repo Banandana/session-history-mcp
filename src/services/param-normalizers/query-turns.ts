@@ -16,7 +16,7 @@ export const normalizeQueryTurns: ParamNormalizer = (input) => {
   const isError = typeof input['isError'] === 'boolean' ? input['isError'] : null
   const isCorrection = typeof input['isCorrection'] === 'boolean' ? input['isCorrection'] : null
 
-  const hasFilter = toolNames || roles || textPattern || isError !== null || isCorrection !== null
+  const hasFilter = toolNames !== null || roles !== null || textPattern !== null || isError !== null || isCorrection !== null
   if (!hasFilter) return null  // pure-scope lookup, skip watermark
 
   const projectId = typeof input['projectId'] === 'string' ? input['projectId'] : null

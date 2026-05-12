@@ -18,10 +18,13 @@ describe('LocalLlmClient', () => {
   beforeEach(() => {
     client = new LocalLlmClient(baseUrl, model)
     vi.clearAllMocks()
+    // Force model discovery to fail so the fallback model is used.
+    vi.stubGlobal('fetch', vi.fn(() => Promise.reject(new Error('no network in tests'))))
   })
 
   afterEach(() => {
     vi.restoreAllMocks()
+    vi.unstubAllGlobals()
   })
 
   describe('summarize', () => {

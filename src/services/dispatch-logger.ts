@@ -40,7 +40,6 @@ export function instrumentDispatch(
         } else if (status === 'ok' && !result) {
           // Don't lie about success — but surface this since a falsy handler
           // return value almost always indicates a broken handler.
-          // eslint-disable-next-line no-console
           console.warn(
             `[dispatch-logger] tool=${toolName} returned falsy result with ok status`,
           )

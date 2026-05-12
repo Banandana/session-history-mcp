@@ -309,10 +309,6 @@ export class FreshnessGuard {
       VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
     `)
 
-    const insertFts = this.db.prepare(`
-      INSERT INTO messages_fts (rowid, search_text) VALUES (?, ?)
-    `)
-
     const selectExistingRowids = this.db.prepare(
       'SELECT rowid FROM messages WHERE session_id = ?'
     )

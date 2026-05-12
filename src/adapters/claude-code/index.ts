@@ -11,7 +11,7 @@ import type {
   SubagentMeta,
   MemoryEntry,
 } from '../../types'
-import { fileExists, fileSize, listFiles } from '../../infrastructure/file-system'
+import { fileExists, fileSize } from '../../infrastructure/file-system'
 import { SessionDiscovery } from './session-discovery'
 import { ConversationParser } from './conversation-parser'
 import { SubagentParser } from './subagent-parser'
@@ -19,7 +19,6 @@ import { FileChangeExtractor } from './file-change-extractor'
 import { MetadataParser } from './metadata-parser'
 import { MemoryReader } from './memory-reader'
 import { ConfigReader } from './config-reader'
-import { ToolResultResolver } from './tool-result-resolver'
 
 export { SessionDiscovery } from './session-discovery'
 export { ConversationParser } from './conversation-parser'
@@ -28,9 +27,6 @@ export { FileChangeExtractor } from './file-change-extractor'
 export { MetadataParser } from './metadata-parser'
 export { MemoryReader } from './memory-reader'
 export { ConfigReader } from './config-reader'
-export { ToolResultResolver } from './tool-result-resolver'
-
-const UUID_JSONL = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}\.jsonl$/
 
 export class ClaudeCodeAdapter implements SessionAdapter {
   readonly source = 'claude-code'
@@ -42,7 +38,6 @@ export class ClaudeCodeAdapter implements SessionAdapter {
   private readonly metadataParser: MetadataParser
   private readonly memoryReader: MemoryReader
   readonly configReader: ConfigReader
-  readonly toolResultResolver: ToolResultResolver
 
   constructor(private readonly claudeDir: string) {
     this.discovery = new SessionDiscovery(claudeDir)
@@ -52,7 +47,6 @@ export class ClaudeCodeAdapter implements SessionAdapter {
     this.metadataParser = new MetadataParser()
     this.memoryReader = new MemoryReader(claudeDir)
     this.configReader = new ConfigReader(claudeDir)
-    this.toolResultResolver = new ToolResultResolver(claudeDir)
   }
 
   async *discoverProjects(): AsyncIterable<ProjectMeta> {

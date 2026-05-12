@@ -114,7 +114,7 @@ const ALL_CAPS_RE = /[A-Z]{4,}/
 /** Heuristic: is this user text message a correction of the preceding assistant turn? */
 function detectCorrection(contentBlocks: readonly ContentBlock[]): boolean {
   const firstBlock = contentBlocks[0]
-  if (!firstBlock || firstBlock.type !== 'text' || !firstBlock.text) return false
+  if (firstBlock?.type !== 'text' || !firstBlock.text) return false
 
   const text = firstBlock.text.trim().toLowerCase()
   if (text.length === 0) return false
@@ -155,18 +155,6 @@ function detectToolResultError(line: RawJsonlLine): boolean {
   return false
 }
 
-function detectToolUseResultError(line: RawJsonlLine): boolean {
-  // Some lines have a top-level toolUseResult field
-  const raw = line as Record<string, unknown>
-  const toolUseResult = raw['toolUseResult']
-  if (toolUseResult === undefined) return false
-  if (typeof toolUseResult === 'string') return /error/i.test(toolUseResult)
-  if (toolUseResult && typeof toolUseResult === 'object') {
-    const obj = toolUseResult as Record<string, unknown>
-    if (obj['stderr'] && String(obj['stderr']).trim().length > 0) return true
-  }
-  return false
-}
 
 function finalizePending(pending: PendingAssistant): NormalizedMessage {
   const toolNames = pending.toolNames.length > 0 ? pending.toolNames : undefined

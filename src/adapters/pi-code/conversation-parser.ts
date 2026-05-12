@@ -91,7 +91,7 @@ const ALL_CAPS_RE = /[A-Z]{4,}/
 
 function detectCorrection(blocks: readonly ContentBlock[]): boolean {
   const first = blocks[0]
-  if (!first || first.type !== 'text' || !first.text) return false
+  if (first?.type !== 'text' || !first.text) return false
   const trimmed = first.text.trim()
   if (trimmed.length === 0) return false
   const lower = trimmed.toLowerCase()

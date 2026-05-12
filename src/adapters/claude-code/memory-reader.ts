@@ -21,7 +21,7 @@ function parseFrontmatter(content: string): { fields: FrontmatterFields; body: s
 
   for (const line of rawFields.split('\n')) {
     const fieldMatch = FIELD_RE.exec(line.trim())
-    if (fieldMatch && fieldMatch[1] && fieldMatch[2]) {
+    if (fieldMatch?.[1] && fieldMatch[2]) {
       fields[fieldMatch[1]] = fieldMatch[2].trim()
     }
   }

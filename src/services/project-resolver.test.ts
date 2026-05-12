@@ -3,17 +3,8 @@ import { join } from 'node:path'
 import { ProjectResolver } from './project-resolver'
 import { AdapterRegistry } from './adapter-registry'
 import { ClaudeCodeAdapter } from '../adapters/claude-code/index'
-import type { ProjectMeta } from '../types'
 
 const FIXTURES = join(__dirname, '../../fixtures/claude-home')
-
-async function collect<T>(iter: AsyncIterable<T>): Promise<T[]> {
-  const items: T[] = []
-  for await (const item of iter) {
-    items.push(item)
-  }
-  return items
-}
 
 describe('ProjectResolver', () => {
   describe('resolveProjectFilter', () => {

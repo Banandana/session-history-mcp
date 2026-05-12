@@ -8,7 +8,7 @@ MCP server for interfacing with Claude session history. First-class LLM-optimize
 - **Module system**: ESM only — no CommonJS, no `.js` extensions on imports
 - **No transpiling**: Use `tsx` or similar for direct execution — no build step producing `.js` artifacts
 - **SDK**: Official `@modelcontextprotocol/sdk` for MCP protocol implementation
-- **DI**: `tsyringe` with `reflect-metadata` for dependency injection and annotation processing
+- **DI**: `inversify` with `reflect-metadata` for dependency injection and annotation processing
 - **Runtime**: Node.js LTS
 
 ## Architecture Rules
@@ -16,7 +16,7 @@ MCP server for interfacing with Claude session history. First-class LLM-optimize
 - **Rich indexing** — All data returned by MCP tools must be self-describing and immediately useful to the caller. Compute metrics, summaries, and labels at index time. Never return raw IDs where human-readable labels can be derived. The caller should never need a follow-up query to understand what a result represents.
 - **1200 line max per file** — split before you hit the limit, not after
 - **Componentized and layered** — clear separation of concerns across layers
-- **DI-based services** — all services registered and resolved through tsyringe containers
+- **DI-based services** — all services registered and resolved through inversify containers
 - **Type/Interface/Contract separation** — types and interfaces live in dedicated files, not mixed with business logic
 - **Business logic isolation** — pure logic separated from infrastructure, transport, and framework concerns
 - **Testing at each level** — unit tests for logic, integration tests for services, e2e tests for MCP tool endpoints
@@ -39,7 +39,7 @@ src/
   tools/           # MCP tool definitions and handlers
   resources/       # MCP resource definitions
   infrastructure/  # Database, file system, external integrations
-  container/       # tsyringe container setup and module registration
+  container/       # inversify container setup and module registration
   server.ts        # MCP server bootstrap
 ```
 
@@ -74,7 +74,7 @@ Add to `~/.claude/settings.local.json` under `mcpServers`:
   "mcpServers": {
     "session-history": {
       "command": "npx",
-      "args": ["tsx", "/home/kitty/Desktop/session-history-mcp/src/server.ts"]
+      "args": ["tsx", "/data/claude-session-mcp/src/server.ts"]
     }
   }
 }
@@ -92,7 +92,7 @@ To keep the index warm without waiting for the next MCP tool call, wire
       "matcher": "",
       "hooks": [{
         "type": "command",
-        "command": "npx tsx /home/kitty/Desktop/session-history-mcp/src/cli/sync.ts"
+        "command": "npx tsx /data/claude-session-mcp/src/cli/sync.ts"
       }]
     }]
   }
