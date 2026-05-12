@@ -41,7 +41,14 @@ async function main(): Promise<void> {
   // handle it. The CLI exits as soon as ensureFresh resolves, which kills
   // that promise — so the CLI must await the indexer explicitly to be
   // useful as a Stop hook.
-  const indexer = container.resolve<EmbeddingIndexer | null>(TOKENS.EmbeddingIndexer)
+  // tsyringe chokes on useValue: null with "TypeInfo not known", so guard the
+  // resolve. The container module registers null when VLLM_EMBEDDING_MODEL is unset.
+  let indexer: EmbeddingIndexer | null = null
+  try {
+    indexer = container.resolve<EmbeddingIndexer | null>(TOKENS.EmbeddingIndexer)
+  } catch {
+    indexer = null
+  }
   let embeddedThisCycle = 0
   let embeddingError: string | null = null
   if (indexer) {

@@ -3,6 +3,7 @@ import { container } from 'tsyringe'
 import { TOKENS } from './tokens'
 import { DatabaseConnection } from '../infrastructure/database'
 import { ClaudeCodeAdapter } from '../adapters/claude-code'
+import { PiCodeAdapter } from '../adapters/pi-code'
 import { AdapterRegistry } from '../services/adapter-registry'
 import { IndexManager } from '../services/index-manager'
 import { SearchIndex } from '../services/search-index'
@@ -43,9 +44,12 @@ export function registerInfrastructure(): void {
   container.register(TOKENS.Database, { useValue: dbConn })
 
   // Adapter & Registry
-  const adapter = new ClaudeCodeAdapter(claudeDir)
+  const piDir = process.env.PI_AGENT_DIR ?? join(homedir(), '.pi', 'agent')
+  const claudeAdapter = new ClaudeCodeAdapter(claudeDir)
+  const piAdapter = new PiCodeAdapter(piDir)
   const registry = new AdapterRegistry()
-  registry.registerAdapter(adapter)
+  registry.registerAdapter(claudeAdapter)
+  registry.registerAdapter(piAdapter)
   container.register(TOKENS.AdapterRegistry, { useValue: registry })
 
   // Index & Search
