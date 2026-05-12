@@ -12,7 +12,7 @@ async function main(): Promise<void> {
   registerAll()
 
   const server = new McpServer({
-    name: 'claude-session-mcp',
+    name: 'session-history-mcp',
     version: '0.1.0',
   })
 
@@ -25,7 +25,7 @@ async function main(): Promise<void> {
 
   const transport = new StdioServerTransport()
   await server.connect(transport)
-  logger.info('claude-session-mcp server running on stdio')
+  logger.info('session-history-mcp server running on stdio')
 }
 
 main().catch((err: unknown) => {

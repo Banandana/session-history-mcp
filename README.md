@@ -1,4 +1,4 @@
-# Claude Session MCP
+# Session History MCP
 
 > **Note:** This project is not guaranteed to be maintained. Use at your own discretion.
 
@@ -71,7 +71,7 @@ Add to your MCP configuration (`~/.claude.json`):
   "mcpServers": {
     "session-history": {
       "command": "npx",
-      "args": ["tsx", "/path/to/claude-session-mcp/src/server.ts"]
+      "args": ["tsx", "/path/to/session-history-mcp/src/server.ts"]
     }
   }
 }

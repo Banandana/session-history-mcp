@@ -1,4 +1,4 @@
-# Claude Session MCP Server
+# Session History MCP Server
 
 MCP server for interfacing with Claude session history. First-class LLM-optimized access through functions designed for efficiency and minimal context consumption.
 
@@ -74,7 +74,7 @@ Add to `~/.claude/settings.local.json` under `mcpServers`:
   "mcpServers": {
     "session-history": {
       "command": "npx",
-      "args": ["tsx", "/home/kitty/Desktop/claude-session-mcp/src/server.ts"]
+      "args": ["tsx", "/home/kitty/Desktop/session-history-mcp/src/server.ts"]
     }
   }
 }
@@ -92,7 +92,7 @@ To keep the index warm without waiting for the next MCP tool call, wire
       "matcher": "",
       "hooks": [{
         "type": "command",
-        "command": "npx tsx /home/kitty/Desktop/claude-session-mcp/src/cli/sync.ts"
+        "command": "npx tsx /home/kitty/Desktop/session-history-mcp/src/cli/sync.ts"
       }]
     }]
   }

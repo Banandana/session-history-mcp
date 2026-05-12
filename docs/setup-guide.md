@@ -1,6 +1,6 @@
 # Setup Guide
 
-Get the Claude Session MCP server running on a new machine.
+Get the Session History MCP server running on a new machine.
 
 ## Prerequisites
 
@@ -16,8 +16,8 @@ Optional:
 
 ```bash
 # 1. Clone the repo
-git clone https://github.com/Banandana/claude-session-mcp.git
-cd claude-session-mcp
+git clone https://github.com/Banandana/session-history-mcp.git
+cd session-history-mcp
 
 # 2. Install dependencies
 npm install
@@ -39,13 +39,13 @@ Edit `~/.claude.json` and add under `mcpServers`:
   "mcpServers": {
     "session-history": {
       "command": "npx",
-      "args": ["tsx", "/absolute/path/to/claude-session-mcp/src/server.ts"]
+      "args": ["tsx", "/absolute/path/to/session-history-mcp/src/server.ts"]
     }
   }
 }
 ```
 
-Replace `/absolute/path/to/claude-session-mcp` with the actual path where you cloned the repo.
+Replace `/absolute/path/to/session-history-mcp` with the actual path where you cloned the repo.
 
 ### Option B: Per-project
 
@@ -56,7 +56,7 @@ Create `.mcp.json` in your project root:
   "mcpServers": {
     "session-history": {
       "command": "npx",
-      "args": ["tsx", "/absolute/path/to/claude-session-mcp/src/server.ts"]
+      "args": ["tsx", "/absolute/path/to/session-history-mcp/src/server.ts"]
     }
   }
 }

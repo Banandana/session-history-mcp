@@ -1,4 +1,4 @@
-# Claude Session MCP Server — Design Spec
+# Session History MCP Server — Design Spec
 
 **Date:** 2026-03-30
 **Claude Code Version Baseline:** 2.1.87

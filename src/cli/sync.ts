@@ -12,7 +12,7 @@
  *         "matcher": "",
  *         "hooks": [{
  *           "type": "command",
- *           "command": "npx tsx /home/kitty/Desktop/claude-session-mcp/src/cli/sync.ts"
+ *           "command": "npx tsx /home/kitty/Desktop/session-history-mcp/src/cli/sync.ts"
  *         }]
  *       }]
  *     }
