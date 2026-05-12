@@ -1,4 +1,4 @@
-import { container } from 'tsyringe'
+import { container } from '../container'
 import type { McpServer } from '@modelcontextprotocol/sdk/server/mcp.js'
 import { z } from 'zod'
 import { TOKENS } from '../container/tokens'
@@ -33,10 +33,10 @@ export function registerContextAudit(server: McpServer): void {
       limit: z.number().int().min(1).max(100).optional().describe('Maximum results (default: 20)'),
     },
     async (params) => {
-      const freshnessGuard = container.resolve<FreshnessGuard>(TOKENS.FreshnessGuard)
-      const auditor = container.resolve<ContextAuditor>(TOKENS.ContextAuditor)
-      const projectResolver = container.resolve<ProjectResolver>(TOKENS.ProjectResolver)
-      const formatter = container.resolve<ResponseFormatter>(TOKENS.ResponseFormatter)
+      const freshnessGuard = container.get<FreshnessGuard>(TOKENS.FreshnessGuard)
+      const auditor = container.get<ContextAuditor>(TOKENS.ContextAuditor)
+      const projectResolver = container.get<ProjectResolver>(TOKENS.ProjectResolver)
+      const formatter = container.get<ResponseFormatter>(TOKENS.ResponseFormatter)
 
       const freshness = await freshnessGuard.ensureFresh()
 

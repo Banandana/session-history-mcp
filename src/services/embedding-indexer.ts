@@ -60,7 +60,7 @@ export class EmbeddingIndexer {
         "SELECT sql FROM sqlite_master WHERE type='table' AND name='message_embeddings'",
       )
       .get() as { sql: string } | undefined
-    if (existing && existing.sql.includes('message_rowid')) {
+    if (existing?.sql.includes('message_rowid')) {
       this.db.exec('DROP TABLE IF EXISTS message_embeddings')
       this.db.exec('UPDATE messages SET embedded_at = NULL')
     }

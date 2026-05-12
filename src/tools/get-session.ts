@@ -1,4 +1,4 @@
-import { container } from 'tsyringe'
+import { container } from '../container'
 import type { McpServer } from '@modelcontextprotocol/sdk/server/mcp.js'
 import { z } from 'zod'
 import { TOKENS } from '../container/tokens'
@@ -73,9 +73,9 @@ export function registerGetSession(server: McpServer): void {
       intent: z.string().max(500).optional().describe('Free-text analysis intent — triggers live LLM analysis (requires detail=full or sections)'),
     },
     async (params) => {
-      const freshnessGuard = container.resolve<FreshnessGuard>(TOKENS.FreshnessGuard)
-      const formatter = container.resolve<ResponseFormatter>(TOKENS.ResponseFormatter)
-      const dbConn = container.resolve<DatabaseConnection>(TOKENS.Database)
+      const freshnessGuard = container.get<FreshnessGuard>(TOKENS.FreshnessGuard)
+      const formatter = container.get<ResponseFormatter>(TOKENS.ResponseFormatter)
+      const dbConn = container.get<DatabaseConnection>(TOKENS.Database)
       const db = dbConn.get()
 
       const freshness = await freshnessGuard.ensureFresh()
@@ -306,7 +306,7 @@ export function registerGetSession(server: McpServer): void {
             const messageCount = session.message_count ?? session.total_turns ?? 0
 
             if (messageCount >= 3) {
-              const llmClient = container.resolve<FallbackLlmClient>(TOKENS.LlmClient)
+              const llmClient = container.get<FallbackLlmClient>(TOKENS.LlmClient)
               const available = await llmClient.isAvailable()
               if (available) {
                 const metricsBlock = [

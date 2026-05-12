@@ -1,4 +1,4 @@
-import { container } from 'tsyringe'
+import { container } from '../container'
 import type { McpServer } from '@modelcontextprotocol/sdk/server/mcp.js'
 import { z } from 'zod'
 import { TOKENS } from '../container/tokens'
@@ -16,9 +16,9 @@ export function registerListProjects(server: McpServer): void {
       limit: z.number().int().min(1).max(1000).optional().describe('Maximum number of projects to return'),
     },
     async (params) => {
-      const freshnessGuard = container.resolve<FreshnessGuard>(TOKENS.FreshnessGuard)
-      const registry = container.resolve<AdapterRegistry>(TOKENS.AdapterRegistry)
-      const formatter = container.resolve<ResponseFormatter>(TOKENS.ResponseFormatter)
+      const freshnessGuard = container.get<FreshnessGuard>(TOKENS.FreshnessGuard)
+      const registry = container.get<AdapterRegistry>(TOKENS.AdapterRegistry)
+      const formatter = container.get<ResponseFormatter>(TOKENS.ResponseFormatter)
 
       const freshness = await freshnessGuard.ensureFresh()
 

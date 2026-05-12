@@ -1,4 +1,4 @@
-import { container } from 'tsyringe'
+import { container } from '../container'
 import type { McpServer } from '@modelcontextprotocol/sdk/server/mcp.js'
 import { z } from 'zod'
 import { TOKENS } from '../container/tokens'
@@ -21,11 +21,11 @@ export function registerGetProject(server: McpServer): void {
       detail: z.enum(['summary', 'full']).optional().describe('Detail level'),
     },
     async (params) => {
-      const freshnessGuard = container.resolve<FreshnessGuard>(TOKENS.FreshnessGuard)
-      const registry = container.resolve<AdapterRegistry>(TOKENS.AdapterRegistry)
-      const projectResolver = container.resolve<ProjectResolver>(TOKENS.ProjectResolver)
-      const formatter = container.resolve<ResponseFormatter>(TOKENS.ResponseFormatter)
-      const auditHistory = container.resolve<AuditHistoryService>(TOKENS.AuditHistoryService)
+      const freshnessGuard = container.get<FreshnessGuard>(TOKENS.FreshnessGuard)
+      const registry = container.get<AdapterRegistry>(TOKENS.AdapterRegistry)
+      const projectResolver = container.get<ProjectResolver>(TOKENS.ProjectResolver)
+      const formatter = container.get<ResponseFormatter>(TOKENS.ResponseFormatter)
+      const auditHistory = container.get<AuditHistoryService>(TOKENS.AuditHistoryService)
 
       const freshness = await freshnessGuard.ensureFresh()
 
@@ -60,7 +60,7 @@ export function registerGetProject(server: McpServer): void {
       const recentAudits = auditHistory.recentForProject([slug, foundProject.path], 10)
 
       if (detail === 'full') {
-        const claudeDir = container.resolve<string>(TOKENS.ClaudeDataDir)
+        const claudeDir = container.get<string>(TOKENS.ClaudeDataDir)
         const configReader = new ConfigReader(claudeDir)
         const memoryReader = new MemoryReader(claudeDir)
 

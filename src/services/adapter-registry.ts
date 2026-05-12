@@ -83,25 +83,45 @@ export class AdapterRegistry {
   }
 
   async checkFreshness(known: IndexState): Promise<FreshnessResult> {
-    const merged: FreshnessResult = {
-      isStale: false,
-      newSessions: [],
-      changedSessions: [],
-      removedSessions: [],
-    }
+    const newSessions: string[] = []
+    const changedSessions: string[] = []
+
+    // Multi-adapter removal semantics: a session is "really removed" only if EVERY
+    // adapter agrees it's gone. Each individual adapter's checkFreshness flags any
+    // id it doesn't own as removed (claude-code adapter does this), so unioning
+    // removedSessions would nuke any other adapter's sessions on every sync.
+    // Intersection: start with the set from the first adapter, keep paring down.
+    let removedIntersection: Set<string> | undefined
 
     for (const adapter of this.adapters) {
       const result = await adapter.checkFreshness(known)
-      ;(merged.newSessions as string[]).push(...result.newSessions)
-      ;(merged.changedSessions as string[]).push(...result.changedSessions)
-      ;(merged.removedSessions as string[]).push(...result.removedSessions)
+      newSessions.push(...result.newSessions)
+      changedSessions.push(...result.changedSessions)
+
+      const removedSet = new Set(result.removedSessions)
+      if (removedIntersection === undefined) {
+        removedIntersection = removedSet
+      } else {
+        for (const id of removedIntersection) {
+          if (!removedSet.has(id)) removedIntersection.delete(id)
+        }
+      }
+    }
+
+    // Also: any id reported new or changed by ANY adapter must NOT be removed.
+    const claimed = new Set<string>([...newSessions, ...changedSessions])
+    const removedSessions: string[] = []
+    if (removedIntersection) {
+      for (const id of removedIntersection) {
+        if (!claimed.has(id)) removedSessions.push(id)
+      }
     }
 
     return {
-      isStale: merged.newSessions.length > 0 || merged.changedSessions.length > 0 || merged.removedSessions.length > 0,
-      newSessions: merged.newSessions,
-      changedSessions: merged.changedSessions,
-      removedSessions: merged.removedSessions,
+      isStale: newSessions.length > 0 || changedSessions.length > 0 || removedSessions.length > 0,
+      newSessions,
+      changedSessions,
+      removedSessions,
     }
   }
 }

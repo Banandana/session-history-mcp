@@ -1,4 +1,4 @@
-import { container } from 'tsyringe'
+import { container } from '../container'
 import type { McpServer } from '@modelcontextprotocol/sdk/server/mcp.js'
 import { z } from 'zod'
 import { TOKENS } from '../container/tokens'
@@ -23,11 +23,11 @@ export function registerSearch(server: McpServer): void {
       cursor: z.string().optional().describe('Pagination cursor'),
     },
     async (params) => {
-      const freshnessGuard = container.resolve<FreshnessGuard>(TOKENS.FreshnessGuard)
-      const searchIndex = container.resolve<SearchIndex>(TOKENS.SearchIndex)
-      const projectResolver = container.resolve<ProjectResolver>(TOKENS.ProjectResolver)
-      const pagination = container.resolve<PaginationManager>(TOKENS.PaginationManager)
-      const formatter = container.resolve<ResponseFormatter>(TOKENS.ResponseFormatter)
+      const freshnessGuard = container.get<FreshnessGuard>(TOKENS.FreshnessGuard)
+      const searchIndex = container.get<SearchIndex>(TOKENS.SearchIndex)
+      const projectResolver = container.get<ProjectResolver>(TOKENS.ProjectResolver)
+      const pagination = container.get<PaginationManager>(TOKENS.PaginationManager)
+      const formatter = container.get<ResponseFormatter>(TOKENS.ResponseFormatter)
 
       const freshness = await freshnessGuard.ensureFresh()
 

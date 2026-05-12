@@ -1,2 +1,2 @@
 export { TOKENS } from './tokens'
-export { registerAll } from './modules'
+export { registerAll, container } from './modules'

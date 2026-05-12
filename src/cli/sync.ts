@@ -25,7 +25,7 @@
  */
 
 import 'reflect-metadata'
-import { container } from 'tsyringe'
+import { container } from '../container'
 import { registerAll } from '../container/modules'
 import { TOKENS } from '../container/tokens'
 import type { FreshnessGuard } from '../services/freshness-guard'
@@ -33,7 +33,7 @@ import type { EmbeddingIndexer } from '../services/embedding-indexer'
 
 async function main(): Promise<void> {
   registerAll()
-  const guard = container.resolve<FreshnessGuard>(TOKENS.FreshnessGuard)
+  const guard = container.get<FreshnessGuard>(TOKENS.FreshnessGuard)
   const result = await guard.ensureFresh()
 
   // The MCP server's ensureFresh fires embedding indexing as a
@@ -41,14 +41,11 @@ async function main(): Promise<void> {
   // handle it. The CLI exits as soon as ensureFresh resolves, which kills
   // that promise — so the CLI must await the indexer explicitly to be
   // useful as a Stop hook.
-  // tsyringe chokes on useValue: null with "TypeInfo not known", so guard the
-  // resolve. The container module registers null when VLLM_EMBEDDING_MODEL is unset.
-  let indexer: EmbeddingIndexer | null = null
-  try {
-    indexer = container.resolve<EmbeddingIndexer | null>(TOKENS.EmbeddingIndexer)
-  } catch {
-    indexer = null
-  }
+  // The container only binds EmbeddingIndexer when VLLM_EMBEDDING_MODEL is set,
+  // so check isBound() instead of catching the resolve throw.
+  const indexer: EmbeddingIndexer | null = container.isBound(TOKENS.EmbeddingIndexer)
+    ? container.get<EmbeddingIndexer>(TOKENS.EmbeddingIndexer)
+    : null
   let embeddedThisCycle = 0
   let embeddingError: string | null = null
   if (indexer) {

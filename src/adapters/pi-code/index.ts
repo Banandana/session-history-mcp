@@ -18,6 +18,8 @@ import { PiFileChangeExtractor } from './file-change-extractor'
 import { PiMetadataParser } from './metadata-parser'
 import { PiMemoryReader } from './memory-reader'
 import { PiSubagentParser } from './subagent-parser'
+import { ok, err, type Result } from 'neverthrow'
+import { PiSessionNotFoundError, PiSessionReadError, type PiAdapterError } from './errors'
 
 export { PiSessionDiscovery } from './session-discovery'
 export { PiConversationParser } from './conversation-parser'
@@ -25,6 +27,7 @@ export { PiFileChangeExtractor } from './file-change-extractor'
 export { PiMetadataParser } from './metadata-parser'
 export { PiMemoryReader, PI_MEMORY_SLUG } from './memory-reader'
 export { PiSubagentParser } from './subagent-parser'
+export { PiSessionNotFoundError, PiSessionReadError, PiAdapterError } from './errors'
 
 /**
  * Adapter for pi-coding-agent session logs at `~/.pi/agent/sessions/<encoded-cwd>/<ts>_<uuid>.jsonl`.
@@ -83,9 +86,27 @@ export class PiCodeAdapter implements SessionAdapter {
   }
 
   async getSessionMetadata(sessionId: string): Promise<SessionMetadataResult | undefined> {
+    const result = await this.getSessionMetadataResult(sessionId)
+    return result.isOk() ? result.value : undefined
+  }
+
+  /**
+   * Result-typed variant of getSessionMetadata. New callers should prefer this
+   * — the SessionAdapter interface forces an `undefined`-erasing return, which
+   * loses the distinction between "session doesn't exist" and "session exists
+   * but failed to parse". The Result form preserves both.
+   */
+  async getSessionMetadataResult(
+    sessionId: string,
+  ): Promise<Result<SessionMetadataResult, PiAdapterError>> {
     const found = await this.discovery.findSessionFile(sessionId)
-    if (!found) return undefined
-    return this.metadataParser.extractMetadata(found.path)
+    if (!found) return err(new PiSessionNotFoundError(sessionId))
+    try {
+      const meta = await this.metadataParser.extractMetadata(found.path)
+      return ok(meta)
+    } catch (cause) {
+      return err(new PiSessionReadError(found.path, cause))
+    }
   }
 
   async getSessionCost(_projectSlug: string, _sessionId: string): Promise<number | undefined> {

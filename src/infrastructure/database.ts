@@ -1,5 +1,5 @@
 import 'reflect-metadata'
-import { injectable, inject } from 'tsyringe'
+import { injectable, inject } from 'inversify'
 import Database from 'better-sqlite3'
 import * as sqliteVec from 'sqlite-vec'
 import { TOKENS } from '../container/tokens'

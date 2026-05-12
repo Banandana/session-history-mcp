@@ -1,4 +1,4 @@
-import { container } from 'tsyringe'
+import { container } from '../container'
 import type { McpServer } from '@modelcontextprotocol/sdk/server/mcp.js'
 import { z } from 'zod'
 import { TOKENS } from '../container/tokens'
@@ -18,9 +18,9 @@ export function registerGetMemory(server: McpServer): void {
       search: z.string().optional().describe('Text search within memory content'),
     },
     async (params) => {
-      const registry = container.resolve<AdapterRegistry>(TOKENS.AdapterRegistry)
-      const projectResolver = container.resolve<ProjectResolver>(TOKENS.ProjectResolver)
-      const formatter = container.resolve<ResponseFormatter>(TOKENS.ResponseFormatter)
+      const registry = container.get<AdapterRegistry>(TOKENS.AdapterRegistry)
+      const projectResolver = container.get<ProjectResolver>(TOKENS.ProjectResolver)
+      const formatter = container.get<ResponseFormatter>(TOKENS.ResponseFormatter)
 
       const projectSlug = await projectResolver.resolveProjectFilter({
         project: params.project,

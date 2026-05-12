@@ -1,4 +1,4 @@
-import { container } from 'tsyringe'
+import { container } from '../container'
 import type { McpServer } from '@modelcontextprotocol/sdk/server/mcp.js'
 import { z } from 'zod'
 import { TOKENS } from '../container/tokens'
@@ -20,10 +20,10 @@ export function registerAnalyze(server: McpServer): void {
       limit: z.number().optional().describe('Maximum results to return'),
     },
     async (params) => {
-      const freshnessGuard = container.resolve<FreshnessGuard>(TOKENS.FreshnessGuard)
-      const analyzer = container.resolve<Analyzer>(TOKENS.Analyzer)
-      const projectResolver = container.resolve<ProjectResolver>(TOKENS.ProjectResolver)
-      const formatter = container.resolve<ResponseFormatter>(TOKENS.ResponseFormatter)
+      const freshnessGuard = container.get<FreshnessGuard>(TOKENS.FreshnessGuard)
+      const analyzer = container.get<Analyzer>(TOKENS.Analyzer)
+      const projectResolver = container.get<ProjectResolver>(TOKENS.ProjectResolver)
+      const formatter = container.get<ResponseFormatter>(TOKENS.ResponseFormatter)
 
       const freshness = await freshnessGuard.ensureFresh()
 

@@ -5,7 +5,7 @@ import type { SubagentMeta } from '../../types'
  * Kept as a class for symmetry with the claude-code adapter shape.
  */
 export class PiSubagentParser {
-  // eslint-disable-next-line @typescript-eslint/no-unused-vars, require-yield
+  // eslint-disable-next-line require-yield
   async *getSubagents(_sessionId: string): AsyncIterable<SubagentMeta> {
     return
   }

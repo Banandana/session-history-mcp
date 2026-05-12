@@ -1,4 +1,4 @@
-import { container } from 'tsyringe'
+import { container } from '../container'
 import type { McpServer } from '@modelcontextprotocol/sdk/server/mcp.js'
 import { z } from 'zod'
 import { join } from 'node:path'
@@ -46,12 +46,12 @@ export function registerGetConversation(server: McpServer): void {
       maxTokens: z.number().optional().describe('Token budget for response — truncates phases and lists to fit'),
     },
     async (params) => {
-      const freshnessGuard = container.resolve<FreshnessGuard>(TOKENS.FreshnessGuard)
-      const formatter = container.resolve<ResponseFormatter>(TOKENS.ResponseFormatter)
-      const dbConn = container.resolve<DatabaseConnection>(TOKENS.Database)
-      const phaseClusterer = container.resolve<PhaseClusterer>(TOKENS.PhaseClusterer)
+      const freshnessGuard = container.get<FreshnessGuard>(TOKENS.FreshnessGuard)
+      const formatter = container.get<ResponseFormatter>(TOKENS.ResponseFormatter)
+      const dbConn = container.get<DatabaseConnection>(TOKENS.Database)
+      const phaseClusterer = container.get<PhaseClusterer>(TOKENS.PhaseClusterer)
       const db = dbConn.get()
-      const claudeDir = container.resolve<string>(TOKENS.ClaudeDataDir)
+      const claudeDir = container.get<string>(TOKENS.ClaudeDataDir)
 
       const freshness = await freshnessGuard.ensureFresh()
 
@@ -92,7 +92,7 @@ export function registerGetConversation(server: McpServer): void {
       }
 
       // Cluster into phases
-      let phases: Phase[] = [...phaseClusterer.cluster(messages)]
+      const phases: Phase[] = [...phaseClusterer.cluster(messages)]
 
       // Parse tool_counts and files_changed from JSON strings
       let toolCounts: Record<string, number> = {}

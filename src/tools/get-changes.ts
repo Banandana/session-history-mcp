@@ -1,4 +1,4 @@
-import { container } from 'tsyringe'
+import { container } from '../container'
 import type { McpServer } from '@modelcontextprotocol/sdk/server/mcp.js'
 import { z } from 'zod'
 import { TOKENS } from '../container/tokens'
@@ -22,11 +22,11 @@ export function registerGetChanges(server: McpServer): void {
       limit: z.number().int().min(1).max(1000).optional().describe('Maximum results to return'),
     },
     async (params) => {
-      const freshnessGuard = container.resolve<FreshnessGuard>(TOKENS.FreshnessGuard)
-      const projectResolver = container.resolve<ProjectResolver>(TOKENS.ProjectResolver)
-      const pagination = container.resolve<PaginationManager>(TOKENS.PaginationManager)
-      const formatter = container.resolve<ResponseFormatter>(TOKENS.ResponseFormatter)
-      const dbConn = container.resolve<DatabaseConnection>(TOKENS.Database)
+      const freshnessGuard = container.get<FreshnessGuard>(TOKENS.FreshnessGuard)
+      const projectResolver = container.get<ProjectResolver>(TOKENS.ProjectResolver)
+      const pagination = container.get<PaginationManager>(TOKENS.PaginationManager)
+      const formatter = container.get<ResponseFormatter>(TOKENS.ResponseFormatter)
+      const dbConn = container.get<DatabaseConnection>(TOKENS.Database)
       const db = dbConn.get()
 
       const freshness = await freshnessGuard.ensureFresh()

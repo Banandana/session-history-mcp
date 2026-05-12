@@ -1,5 +1,5 @@
 import 'reflect-metadata'
-import { container } from 'tsyringe'
+import { Container } from 'inversify'
 import { TOKENS } from './tokens'
 import { DatabaseConnection } from '../infrastructure/database'
 import { ClaudeCodeAdapter } from '../adapters/claude-code'
@@ -30,18 +30,29 @@ import { join } from 'node:path'
 const DEFAULT_LOCAL_LLM_URL = 'http://localhost:30000/v1'
 const DEFAULT_LOCAL_LLM_MODEL = 'QuantTrio/MiniMax-M2.5-AWQ'
 
+/**
+ * Shared singleton DI container. Module-level so tools and CLIs can import and
+ * `container.get(TOKENS.X)` without threading the container through every call site.
+ */
+export const container = new Container()
+
+let registered = false
+
 export function registerInfrastructure(): void {
+  if (registered) return
+  registered = true
+
   const claudeDir = join(homedir(), '.claude')
   const localLlmUrl = process.env.LOCAL_LLM_URL ?? DEFAULT_LOCAL_LLM_URL
   const localLlmModel = process.env.LOCAL_LLM_MODEL ?? DEFAULT_LOCAL_LLM_MODEL
 
-  container.register(TOKENS.ClaudeDataDir, { useValue: claudeDir })
-  container.register(TOKENS.LocalLlmUrl, { useValue: localLlmUrl })
-  container.register(TOKENS.LocalLlmModel, { useValue: localLlmModel })
+  container.bind<string>(TOKENS.ClaudeDataDir).toConstantValue(claudeDir)
+  container.bind<string>(TOKENS.LocalLlmUrl).toConstantValue(localLlmUrl)
+  container.bind<string>(TOKENS.LocalLlmModel).toConstantValue(localLlmModel)
 
   // Database
   const dbConn = new DatabaseConnection(claudeDir)
-  container.register(TOKENS.Database, { useValue: dbConn })
+  container.bind<DatabaseConnection>(TOKENS.Database).toConstantValue(dbConn)
 
   // Adapter & Registry
   const piDir = process.env.PI_AGENT_DIR ?? join(homedir(), '.pi', 'agent')
@@ -50,59 +61,57 @@ export function registerInfrastructure(): void {
   const registry = new AdapterRegistry()
   registry.registerAdapter(claudeAdapter)
   registry.registerAdapter(piAdapter)
-  container.register(TOKENS.AdapterRegistry, { useValue: registry })
+  container.bind<AdapterRegistry>(TOKENS.AdapterRegistry).toConstantValue(registry)
 
-  // Index & Search
+  // Index & Search — ensure schema/migrations run before services that depend on it.
   const db = dbConn.get()
   const indexManager = new IndexManager(db)
   // Ensure schema/migrations run before any service that depends on
   // post-v0 columns: ContextAuditor.ensureIndexes references cost_usd
   // (v3), and ToolInvocationLogger writes to tool_invocations (v5).
   indexManager.ensureSchema()
-  container.register(TOKENS.IndexManager, { useValue: indexManager })
+  container.bind<IndexManager>(TOKENS.IndexManager).toConstantValue(indexManager)
 
   const searchIndex = new SearchIndex(db)
-  container.register(TOKENS.SearchIndex, { useValue: searchIndex })
+  container.bind<SearchIndex>(TOKENS.SearchIndex).toConstantValue(searchIndex)
 
   const turnIndexer = new TurnIndexer(db)
-  container.register(TOKENS.TurnIndexer, { useValue: turnIndexer })
+  container.bind<TurnIndexer>(TOKENS.TurnIndexer).toConstantValue(turnIndexer)
 
-  // LLM — legacy local client + new fallback client (local-first, Anthropic as fallback)
+  // LLM clients — legacy local + fallback (local-first, Anthropic as fallback).
   const llmClient = new LocalLlmClient(localLlmUrl, localLlmModel)
-  container.register(TOKENS.LocalLlmClient, { useValue: llmClient })
+  container.bind<LocalLlmClient>(TOKENS.LocalLlmClient).toConstantValue(llmClient)
   const fallbackLlmClient = createLlmClient(localLlmUrl, localLlmModel)
-  container.register(TOKENS.LlmClient, { useValue: fallbackLlmClient })
-
-  // Freshness Guard — embedding indexer is wired below after construction
-  // so the guard can fire-and-forget embedding runs alongside summarization.
-  let freshnessGuard: FreshnessGuard
+  container.bind(TOKENS.LlmClient).toConstantValue(fallbackLlmClient)
 
   // Services
   const tokenBudget = new TokenBudgetManager()
-  container.register(TOKENS.TokenBudgetManager, { useValue: tokenBudget })
+  container.bind<TokenBudgetManager>(TOKENS.TokenBudgetManager).toConstantValue(tokenBudget)
 
   const pagination = new PaginationManager()
-  container.register(TOKENS.PaginationManager, { useValue: pagination })
+  container.bind<PaginationManager>(TOKENS.PaginationManager).toConstantValue(pagination)
 
   const projectResolver = new ProjectResolver(registry)
-  container.register(TOKENS.ProjectResolver, { useValue: projectResolver })
+  container.bind<ProjectResolver>(TOKENS.ProjectResolver).toConstantValue(projectResolver)
 
   const analyzer = new Analyzer(db)
-  container.register(TOKENS.Analyzer, { useValue: analyzer })
+  container.bind<Analyzer>(TOKENS.Analyzer).toConstantValue(analyzer)
 
   const responseFormatter = new ResponseFormatter()
-  container.register(TOKENS.ResponseFormatter, { useValue: responseFormatter })
+  container.bind<ResponseFormatter>(TOKENS.ResponseFormatter).toConstantValue(responseFormatter)
 
   const phaseClusterer = new PhaseClusterer()
-  container.register(TOKENS.PhaseClusterer, { useValue: phaseClusterer })
+  container.bind<PhaseClusterer>(TOKENS.PhaseClusterer).toConstantValue(phaseClusterer)
 
   const contextAuditor = new ContextAuditor(db)
   contextAuditor.ensureIndexes()
-  container.register(TOKENS.ContextAuditor, { useValue: contextAuditor })
+  container.bind<ContextAuditor>(TOKENS.ContextAuditor).toConstantValue(contextAuditor)
 
-  // Embedding indexer — opt-in via VLLM_EMBEDDING_MODEL env var. When the
-  // env var is unset, the token is registered as `null` and semantic_search
-  // returns an informative error telling the user how to enable it.
+  // Embedding indexer — opt-in via VLLM_EMBEDDING_MODEL env var. When unset, we
+  // simply don't bind the token; semantic_search uses container.isBound() to
+  // surface a clean "feature disabled" error. Inversify's toConstantValue(null)
+  // is legal but downstream consumers shouldn't have to null-check; checking
+  // isBound is cleaner.
   const embeddingModel = process.env.VLLM_EMBEDDING_MODEL
   let embeddingIndexer: EmbeddingIndexer | null = null
   if (embeddingModel) {
@@ -114,12 +123,11 @@ export function registerInfrastructure(): void {
       embeddingBaseUrl,
     })
     embeddingIndexer = new EmbeddingIndexer(db, embeddingClient, embeddingDim)
+    container.bind<EmbeddingIndexer>(TOKENS.EmbeddingIndexer).toConstantValue(embeddingIndexer)
   }
-  container.register(TOKENS.EmbeddingIndexer, { useValue: embeddingIndexer })
 
-  // Now build the FreshnessGuard with the embedding indexer attached so
-  // post-sync embedding runs fire-and-forget alongside summarization.
-  freshnessGuard = new FreshnessGuard(
+  // FreshnessGuard built last so it can capture the (maybe-null) embedding indexer.
+  const freshnessGuard = new FreshnessGuard(
     registry,
     indexManager,
     claudeDir,
@@ -128,14 +136,14 @@ export function registerInfrastructure(): void {
     turnIndexer,
     embeddingIndexer,
   )
-  container.register(TOKENS.FreshnessGuard, { useValue: freshnessGuard })
+  container.bind<FreshnessGuard>(TOKENS.FreshnessGuard).toConstantValue(freshnessGuard)
 
   // Tool-invocation log (V5) — schema is created via IndexManager migrations.
   const invocationLogger = new ToolInvocationLogger(db)
-  container.register(TOKENS.ToolInvocationLogger, { useValue: invocationLogger })
+  container.bind<ToolInvocationLogger>(TOKENS.ToolInvocationLogger).toConstantValue(invocationLogger)
 
   const auditHistory = new AuditHistoryService(db)
-  container.register(TOKENS.AuditHistoryService, { useValue: auditHistory })
+  container.bind<AuditHistoryService>(TOKENS.AuditHistoryService).toConstantValue(auditHistory)
 }
 
 export function registerAll(): void {

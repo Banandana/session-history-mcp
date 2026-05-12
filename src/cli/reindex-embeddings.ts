@@ -12,7 +12,7 @@
  */
 
 import 'reflect-metadata'
-import { container } from 'tsyringe'
+import { container } from '../container'
 import { registerAll } from '../container/modules'
 import { TOKENS } from '../container/tokens'
 import type { FreshnessGuard } from '../services/freshness-guard'
@@ -24,10 +24,10 @@ async function main(): Promise<void> {
   registerAll()
 
   // Run ensureFresh once so any new messages land before we start indexing.
-  const guard = container.resolve<FreshnessGuard>(TOKENS.FreshnessGuard)
+  const guard = container.get<FreshnessGuard>(TOKENS.FreshnessGuard)
   await guard.ensureFresh()
 
-  const indexer = container.resolve<EmbeddingIndexer | null>(TOKENS.EmbeddingIndexer)
+  const indexer = container.get<EmbeddingIndexer | null>(TOKENS.EmbeddingIndexer)
   if (!indexer) {
     process.stderr.write('reindex-embeddings: VLLM_EMBEDDING_MODEL is not set — nothing to do\n')
     process.exit(1)

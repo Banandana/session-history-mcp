@@ -1,4 +1,4 @@
-import { container } from 'tsyringe'
+import { container } from '../container'
 import type { McpServer } from '@modelcontextprotocol/sdk/server/mcp.js'
 import { z } from 'zod'
 import { join } from 'node:path'
@@ -262,7 +262,7 @@ async function ensureTurnEventsIndexed(
 
   if (unindexed.length === 0) return
 
-  const turnIndexer = container.resolve<TurnIndexer>(TOKENS.TurnIndexer)
+  const turnIndexer = container.get<TurnIndexer>(TOKENS.TurnIndexer)
   const parser = new ConversationParser()
 
   for (const session of unindexed) {
@@ -394,11 +394,11 @@ export function registerQueryTurns(server: McpServer): void {
       compact: z.boolean().optional().describe('If true, return only {sessionId, turnIndex, turnId, timestamp} per result — ~5x smaller than full TurnReference. Use when you plan to follow up with get_turns for interesting results.'),
     },
     async (params) => {
-      const freshnessGuard = container.resolve<FreshnessGuard>(TOKENS.FreshnessGuard)
-      const formatter = container.resolve<ResponseFormatter>(TOKENS.ResponseFormatter)
-      const dbConn = container.resolve<DatabaseConnection>(TOKENS.Database)
+      const freshnessGuard = container.get<FreshnessGuard>(TOKENS.FreshnessGuard)
+      const formatter = container.get<ResponseFormatter>(TOKENS.ResponseFormatter)
+      const dbConn = container.get<DatabaseConnection>(TOKENS.Database)
       const db = dbConn.get()
-      const claudeDir = container.resolve<string>(TOKENS.ClaudeDataDir)
+      const claudeDir = container.get<string>(TOKENS.ClaudeDataDir)
 
       // Validate constraints
       if (!params.sessionId && !params.projectId) {

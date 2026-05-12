@@ -1,14 +1,14 @@
 import 'reflect-metadata'
-import { container } from 'tsyringe'
 import { McpServer } from '@modelcontextprotocol/sdk/server/mcp.js'
 import { StdioServerTransport } from '@modelcontextprotocol/sdk/server/stdio.js'
-import { registerAll } from './container'
+import { registerAll, container } from './container'
 import { TOKENS } from './container/tokens'
 import { registerTools } from './tools'
 import { instrumentDispatch } from './services/dispatch-logger'
 import type { ToolInvocationLogger } from './services/invocation-logger'
+import { logger } from './infrastructure/logger'
 
-async function main() {
+async function main(): Promise<void> {
   registerAll()
 
   const server = new McpServer({
@@ -18,17 +18,17 @@ async function main() {
 
   // Wrap server.tool() so every MCP call is logged. Must happen BEFORE
   // registerTools so the wrapper sees every registration.
-  const logger = container.resolve<ToolInvocationLogger>(TOKENS.ToolInvocationLogger)
-  instrumentDispatch(server, logger)
+  const invocationLogger = container.get<ToolInvocationLogger>(TOKENS.ToolInvocationLogger)
+  instrumentDispatch(server, invocationLogger)
 
   registerTools(server)
 
   const transport = new StdioServerTransport()
   await server.connect(transport)
-  console.error('claude-session-mcp server running on stdio')
+  logger.info('claude-session-mcp server running on stdio')
 }
 
-main().catch(err => {
-  console.error('Fatal:', err)
+main().catch((err: unknown) => {
+  logger.fatal({ err }, 'fatal: server failed to start')
   process.exit(1)
 })

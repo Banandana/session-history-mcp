@@ -42,14 +42,14 @@ export class PiFileChangeExtractor {
 
       if (parsed.type !== 'message') continue
       const message = parsed.message as { role?: string; content?: unknown } | undefined
-      if (!message || message.role !== 'assistant') continue
+      if (message?.role !== 'assistant') continue
       if (!Array.isArray(message.content)) continue
 
       const messageId = parsed.id as string | undefined
       const timestamp = (parsed.timestamp as string | undefined) ?? new Date().toISOString()
 
       for (const blk of message.content as PiToolCall[]) {
-        if (!blk || blk.type !== 'toolCall') continue
+        if (blk?.type !== 'toolCall') continue
         const op = operationFor(blk.name)
         if (!op) continue
         const args = blk.arguments

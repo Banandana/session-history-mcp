@@ -1,4 +1,4 @@
-import { container } from 'tsyringe'
+import { container } from '../container'
 import type { McpServer } from '@modelcontextprotocol/sdk/server/mcp.js'
 import { z } from 'zod'
 import { TOKENS } from '../container/tokens'
@@ -21,9 +21,9 @@ export function registerGetAuditHistory(server: McpServer): void {
       sort: z.enum(['recent', 'stale', 'frequency']).optional().describe('Sort order — recent=default'),
     },
     async (params) => {
-      const service = container.resolve<AuditHistoryService>(TOKENS.AuditHistoryService)
-      const formatter = container.resolve<ResponseFormatter>(TOKENS.ResponseFormatter)
-      const freshnessGuard = container.resolve<FreshnessGuard>(TOKENS.FreshnessGuard)
+      const service = container.get<AuditHistoryService>(TOKENS.AuditHistoryService)
+      const formatter = container.get<ResponseFormatter>(TOKENS.ResponseFormatter)
+      const freshnessGuard = container.get<FreshnessGuard>(TOKENS.FreshnessGuard)
 
       const freshness = await freshnessGuard.ensureFresh()
 
