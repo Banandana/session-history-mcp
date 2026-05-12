@@ -1,11 +1,11 @@
 export interface DateRange {
-  readonly from?: string  // ISO 8601
-  readonly to?: string    // ISO 8601
+  readonly from?: string | undefined  // ISO 8601
+  readonly to?: string | undefined    // ISO 8601
 }
 
 export interface PaginationParams {
-  readonly cursor?: string
-  readonly limit?: number
+  readonly cursor?: string | undefined
+  readonly limit?: number | undefined
 }
 
 export interface PaginationResult {
@@ -23,6 +23,6 @@ export interface ResponseMeta {
 
 export interface ToolResponse<T> {
   readonly data: T
-  readonly pagination?: PaginationResult
+  readonly pagination?: PaginationResult | undefined
   readonly meta: ResponseMeta
 }

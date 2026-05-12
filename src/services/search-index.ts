@@ -15,11 +15,11 @@ export interface SearchResult {
 }
 
 export interface SearchOptions {
-  readonly projectSlug?: string
-  readonly sessionId?: string
-  readonly dateRange?: DateRange
-  readonly limit?: number
-  readonly offset?: number
+  readonly projectSlug?: string | undefined
+  readonly sessionId?: string | undefined
+  readonly dateRange?: DateRange | undefined
+  readonly limit?: number | undefined
+  readonly offset?: number | undefined
 }
 
 /**

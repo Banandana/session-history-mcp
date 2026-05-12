@@ -20,7 +20,7 @@ export interface CanonicalParams {
   /** The audit-distinct subset of params, with sorted keys and defaults filled. */
   readonly shape: Record<string, unknown>
   /** Optional project slug derived from params, denormalized onto the watermark row. */
-  readonly projectPath?: string
+  readonly projectPath?: string | undefined
 }
 
 /**
@@ -68,7 +68,7 @@ export interface AuditHistoryEntry {
   readonly followUp?: {
     readonly tool: string
     readonly suggestedSince: string
-  }
+  } | undefined
 }
 
 /** Input record submitted to the logger after each MCP call. */
@@ -78,6 +78,6 @@ export interface InvocationRecord {
   readonly status: InvocationStatus
   readonly durationMs: number
   readonly resultSize: number
-  readonly calledAt?: number
+  readonly calledAt?: number | undefined
   readonly callerSession?: string | null
 }

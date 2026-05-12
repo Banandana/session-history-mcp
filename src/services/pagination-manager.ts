@@ -1,6 +1,6 @@
 export interface PaginatedResult<T> {
   readonly items: readonly T[]
-  readonly cursor?: string
+  readonly cursor?: string | undefined
   readonly hasMore: boolean
   readonly totalEstimate: number
 }
@@ -10,7 +10,7 @@ export class PaginationManager {
 
   paginate<T>(
     items: readonly T[],
-    params: { cursor?: string; limit?: number }
+    params: { cursor?: string | undefined; limit?: number | undefined }
   ): PaginatedResult<T> {
     const offset = params.cursor ? this.decodeCursor(params.cursor) : 0
     const limit = params.limit ?? this.defaultLimit

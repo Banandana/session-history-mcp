@@ -27,9 +27,9 @@ interface SqlFilter {
 }
 
 interface CostBreakdownOptions {
-  readonly filters?: ContextAuditFilters
-  readonly groupBy?: TemporalGrouping
-  readonly limit?: number
+  readonly filters?: ContextAuditFilters | undefined
+  readonly groupBy?: TemporalGrouping | undefined
+  readonly limit?: number | undefined
 }
 
 const STRFTIME_FORMATS: Record<TemporalGrouping, string> = {
@@ -241,7 +241,7 @@ export class ContextAuditor {
 
   tokenAttribution(
     detail: ContextAuditDetail,
-    options: { filters?: ContextAuditFilters; limit?: number }
+    options: { filters?: ContextAuditFilters | undefined; limit?: number | undefined }
   ): TokenAttributionSummary | TokenAttributionFull {
     if (detail === 'full') {
       return this.tokenAttributionFull(options)
@@ -249,7 +249,7 @@ export class ContextAuditor {
     return this.tokenAttributionSummary(options)
   }
 
-  private tokenAttributionSummary(options: { filters?: ContextAuditFilters; limit?: number }): TokenAttributionSummary {
+  private tokenAttributionSummary(options: { filters?: ContextAuditFilters | undefined; limit?: number | undefined }): TokenAttributionSummary {
     const filter = this.buildSessionFilters(options.filters)
     const limit = options.limit ?? 20
 
@@ -293,7 +293,7 @@ export class ContextAuditor {
     return { tools, totalToolResultTokens: grandTotal }
   }
 
-  private tokenAttributionFull(options: { filters?: ContextAuditFilters; limit?: number }): TokenAttributionFull {
+  private tokenAttributionFull(options: { filters?: ContextAuditFilters | undefined; limit?: number | undefined }): TokenAttributionFull {
     const filter = this.buildSessionFilters(options.filters)
     const where = filter.conditions.length > 0
       ? 'WHERE ' + filter.conditions.join(' AND ')
@@ -369,7 +369,7 @@ export class ContextAuditor {
 
   contextUtilization(
     detail: ContextAuditDetail,
-    options: { filters?: ContextAuditFilters; groupBy?: TemporalGrouping; limit?: number }
+    options: { filters?: ContextAuditFilters | undefined; groupBy?: TemporalGrouping | undefined; limit?: number | undefined }
   ): ContextUtilizationSummary | ContextUtilizationFull {
     const limit = options.limit ?? 20
     const filter = this.buildSessionFilters(options.filters)
@@ -499,7 +499,7 @@ export class ContextAuditor {
 
   cacheAnalysis(
     detail: ContextAuditDetail,
-    options: { filters?: ContextAuditFilters; groupBy?: TemporalGrouping; limit?: number }
+    options: { filters?: ContextAuditFilters | undefined; groupBy?: TemporalGrouping | undefined; limit?: number | undefined }
   ): CacheAnalysisSummary | CacheAnalysisFull {
     const limit = options.limit ?? 20
     const filter = this.buildSessionFilters(options.filters)
@@ -630,7 +630,7 @@ export class ContextAuditor {
 
   collapseAnalysis(
     detail: ContextAuditDetail,
-    options: { filters?: ContextAuditFilters; groupBy?: TemporalGrouping; limit?: number }
+    options: { filters?: ContextAuditFilters | undefined; groupBy?: TemporalGrouping | undefined; limit?: number | undefined }
   ): CollapseAnalysisSummary | CollapseAnalysisFull {
     const limit = options.limit ?? 20
     const filter = this.buildSessionFilters(options.filters)
@@ -783,7 +783,7 @@ export class ContextAuditor {
 
   sessionProfile(
     detail: ContextAuditDetail,
-    options: { filters?: ContextAuditFilters; limit?: number }
+    options: { filters?: ContextAuditFilters | undefined; limit?: number | undefined }
   ): SessionProfileSummary | SessionProfileFull {
     const filter = this.buildSessionFilters(options.filters)
     const where = this.whereClause(filter)

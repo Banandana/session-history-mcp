@@ -9,15 +9,15 @@ function formatSessionLabel(startedAt: string | null, topic: string | null): str
 export interface AnalysisResult {
   readonly label: string
   readonly count: number
-  readonly sessionId?: string
-  readonly projectSlug?: string
-  readonly details?: string
+  readonly sessionId?: string | undefined
+  readonly projectSlug?: string | undefined
+  readonly details?: string | undefined
 }
 
 type AnalyzeOptions = {
-  projectSlug?: string
-  dateRange?: DateRange
-  limit?: number
+  projectSlug?: string | undefined
+  dateRange?: DateRange | undefined
+  limit?: number | undefined
 }
 
 export class Analyzer {

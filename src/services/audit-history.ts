@@ -7,17 +7,17 @@ import type {
 import { RECENT_AUDITS_DENYLIST } from './param-normalizers'
 
 export interface AuditHistoryQuery {
-  readonly project?: string
-  readonly toolName?: string
+  readonly project?: string | undefined
+  readonly toolName?: string | undefined
   /** Substring match against canonical params JSON. Loose; for surgical filters use raw SQL. */
-  readonly paramsContains?: string
+  readonly paramsContains?: string | undefined
   /** Only audits whose lastCalledAt is after this ISO time. */
-  readonly since?: string
+  readonly since?: string | undefined
   /** Only audits whose lastCalledAt is BEFORE this ISO time (i.e. stale). */
-  readonly staleSince?: string
-  readonly mode?: 'audits' | 'raw'
-  readonly limit?: number
-  readonly sort?: 'recent' | 'stale' | 'frequency'
+  readonly staleSince?: string | undefined
+  readonly mode?: 'audits' | 'raw' | undefined
+  readonly limit?: number | undefined
+  readonly sort?: 'recent' | 'stale' | 'frequency' | undefined
 }
 
 export interface RawInvocationRecord {

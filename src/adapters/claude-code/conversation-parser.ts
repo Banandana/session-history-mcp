@@ -36,7 +36,7 @@ interface PendingAssistant {
   messageId: string
   parentUuid: string | null
   firstUuid: string
-  model?: string
+  model?: string | undefined
   timestamp: string
   sessionId: string
   contentBlocks: ContentBlock[]
@@ -44,9 +44,9 @@ interface PendingAssistant {
   stopReason: string | null
   toolNames: string[]
   hasThinking: boolean
-  cwd?: string
-  gitBranch?: string
-  entrypoint?: string
+  cwd?: string | undefined
+  gitBranch?: string | undefined
+  entrypoint?: string | undefined
 }
 
 function extractSessionId(sessionPath: string): string {

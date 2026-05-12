@@ -184,12 +184,12 @@ export class FreshnessGuard {
         messages.push(msg)
       }
 
-      const fileChanges: Array<{ messageId?: string; filePath: string; operation: string; timestamp: string }> = []
+      const fileChanges: Array<{ messageId?: string | undefined; filePath: string; operation: string; timestamp: string }> = []
       for await (const change of this.registry.getFileChanges(sessionId)) {
         fileChanges.push(change)
       }
 
-      const subagents: Array<{ id: string; agentType?: string; description?: string; totalTokens?: number; totalTools?: number; durationMs?: number; model?: string }> = []
+      const subagents: Array<{ id: string; agentType?: string | undefined; description?: string | undefined; totalTokens?: number | undefined; totalTools?: number | undefined; durationMs?: number | undefined; model?: string | undefined }> = []
       for await (const agent of this.registry.getSubagents(sessionId)) {
         subagents.push(agent)
       }

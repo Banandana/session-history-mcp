@@ -15,17 +15,17 @@ export interface FreshnessResult {
 }
 
 export interface SessionMetadataResult {
-  readonly customTitle?: string
-  readonly aiTitle?: string
+  readonly customTitle?: string | undefined
+  readonly aiTitle?: string | undefined
   readonly tags: readonly string[]
-  readonly mode?: 'coordinator' | 'normal'
+  readonly mode?: 'coordinator' | 'normal' | undefined
   readonly prLinks: readonly PrLink[]
   readonly collapses: readonly ContextCollapse[]
   readonly taskSummaries: readonly string[]
-  readonly worktreeBranch?: string
-  readonly worktreePath?: string
+  readonly worktreeBranch?: string | undefined
+  readonly worktreePath?: string | undefined
   readonly speculationTimeSavedMs: number
-  readonly gitBranch?: string
+  readonly gitBranch?: string | undefined
 }
 
 export interface SessionAdapter {

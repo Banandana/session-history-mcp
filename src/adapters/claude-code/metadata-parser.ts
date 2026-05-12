@@ -35,7 +35,7 @@ export class MetadataParser {
       if (!lineType) continue
 
       if (gitBranch === undefined && (lineType === 'user' || lineType === 'assistant')) {
-        const b = parsed.gitBranch
+        const b = parsed['gitBranch']
         if (typeof b === 'string' && b.length > 0) {
           gitBranch = b
         }

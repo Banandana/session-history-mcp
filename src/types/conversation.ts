@@ -18,7 +18,7 @@ export interface TurnReference {
   readonly toolNames: readonly string[]
   readonly isError: boolean
   readonly isCorrection: boolean
-  readonly matchContext?: string
+  readonly matchContext?: string | undefined
 }
 
 export interface ExpandedTurn {
@@ -31,10 +31,10 @@ export interface ExpandedTurn {
   readonly isError: boolean
   readonly isCorrection: boolean
   readonly hasThinking: boolean
-  readonly model?: string
-  readonly tokenUsage?: TokenUsage
+  readonly model?: string | undefined
+  readonly tokenUsage?: TokenUsage | undefined
   readonly cacheTokens?: {
     readonly creation: number
     readonly read: number
-  }
+  } | undefined
 }

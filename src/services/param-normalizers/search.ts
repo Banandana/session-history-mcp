@@ -9,15 +9,15 @@ import type { ParamNormalizer } from '../../types/invocation-log'
  * agent that re-runs the query with a fresh `from` matches the same watermark.
  */
 function normalizeQueryShape(toolName: 'search' | 'semantic_search', input: Record<string, unknown>) {
-  const query = typeof input.query === 'string' ? input.query.trim() : ''
+  const query = typeof input['query'] === 'string' ? input['query'].trim() : ''
   if (!query) return null
 
   const projectPath = pickProject(input)
-  const sessionId = typeof input.sessionId === 'string' && input.sessionId.length > 0
-    ? input.sessionId
+  const sessionId = typeof input['sessionId'] === 'string' && input['sessionId'].length > 0
+    ? input['sessionId']
     : null
-  const hasFrom = typeof input.from === 'string' && input.from.length > 0
-  const hasTo = typeof input.to === 'string' && input.to.length > 0
+  const hasFrom = typeof input['from'] === 'string' && input['from'].length > 0
+  const hasTo = typeof input['to'] === 'string' && input['to'].length > 0
   const temporalKind = hasFrom || hasTo ? 'pinned_range' : 'all_time'
 
   return {
@@ -36,7 +36,7 @@ export const normalizeSearch: ParamNormalizer = (input) => normalizeQueryShape('
 export const normalizeSemanticSearch: ParamNormalizer = (input) => normalizeQueryShape('semantic_search', input)
 
 function pickProject(input: Record<string, unknown>): string | undefined {
-  if (typeof input.project === 'string' && input.project.length > 0) return input.project
-  if (typeof input.path === 'string' && input.path.length > 0) return input.path
+  if (typeof input['project'] === 'string' && input['project'].length > 0) return input['project']
+  if (typeof input['path'] === 'string' && input['path'].length > 0) return input['path']
   return undefined
 }

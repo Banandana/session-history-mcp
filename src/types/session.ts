@@ -3,21 +3,21 @@ export type MessageType = 'user' | 'assistant' | 'system' | 'progress' | 'file-h
 
 export interface ContentBlock {
   readonly type: 'text' | 'tool_use' | 'tool_result' | 'thinking'
-  readonly text?: string
-  readonly id?: string
-  readonly name?: string
-  readonly input?: unknown
-  readonly tool_use_id?: string
-  readonly content?: unknown
-  readonly thinking?: string
-  readonly signature?: string
+  readonly text?: string | undefined
+  readonly id?: string | undefined
+  readonly name?: string | undefined
+  readonly input?: unknown | undefined
+  readonly tool_use_id?: string | undefined
+  readonly content?: unknown | undefined
+  readonly thinking?: string | undefined
+  readonly signature?: string | undefined
 }
 
 export interface TokenUsage {
   readonly input_tokens: number
   readonly output_tokens: number
-  readonly cache_creation_input_tokens?: number
-  readonly cache_read_input_tokens?: number
+  readonly cache_creation_input_tokens?: number | undefined
+  readonly cache_read_input_tokens?: number | undefined
 }
 
 export interface NormalizedMessage {
@@ -26,18 +26,18 @@ export interface NormalizedMessage {
   readonly role: MessageRole
   readonly timestamp: string
   readonly contentBlocks: readonly ContentBlock[]
-  readonly model?: string
-  readonly tokenUsage?: TokenUsage
-  readonly toolNames?: readonly string[]
+  readonly model?: string | undefined
+  readonly tokenUsage?: TokenUsage | undefined
+  readonly toolNames?: readonly string[] | undefined
   readonly isError: boolean
   readonly isCorrection: boolean
   readonly hasThinking: boolean
-  readonly requestId?: string
-  readonly parentUuid?: string | null
+  readonly requestId?: string | undefined
+  readonly parentUuid?: string | null | undefined
   readonly uuid: string
-  readonly cwd?: string
-  readonly gitBranch?: string
-  readonly entrypoint?: string
+  readonly cwd?: string | undefined
+  readonly gitBranch?: string | undefined
+  readonly entrypoint?: string | undefined
 }
 
 export interface SessionMeta {
@@ -45,36 +45,36 @@ export interface SessionMeta {
   readonly source: string
   readonly projectSlug: string
   readonly cwd: string
-  readonly branch?: string
+  readonly branch?: string | undefined
   readonly startedAt: string
-  readonly endedAt?: string
-  readonly durationMinutes?: number
-  readonly model?: string
-  readonly totalTokens?: number
-  readonly totalTurns?: number
-  readonly messageCount?: number
-  readonly errorCount?: number
-  readonly correctionCount?: number
-  readonly subagentCount?: number
-  readonly toolCounts?: Record<string, number>
-  readonly filesChanged?: ReadonlyArray<{ readonly path: string; readonly op: string }>
-  readonly topic?: string
-  readonly summary?: string
-  readonly summaryGeneratedAt?: string
-  readonly summaryText?: string
-  readonly version?: string
-  readonly customTitle?: string
-  readonly aiTitle?: string
-  readonly tags?: readonly string[]
-  readonly costUsd?: number
-  readonly mode?: 'coordinator' | 'normal'
-  readonly entrypoint?: string
+  readonly endedAt?: string | undefined
+  readonly durationMinutes?: number | undefined
+  readonly model?: string | undefined
+  readonly totalTokens?: number | undefined
+  readonly totalTurns?: number | undefined
+  readonly messageCount?: number | undefined
+  readonly errorCount?: number | undefined
+  readonly correctionCount?: number | undefined
+  readonly subagentCount?: number | undefined
+  readonly toolCounts?: Record<string, number> | undefined
+  readonly filesChanged?: ReadonlyArray<{ readonly path: string; readonly op: string }> | undefined
+  readonly topic?: string | undefined
+  readonly summary?: string | undefined
+  readonly summaryGeneratedAt?: string | undefined
+  readonly summaryText?: string | undefined
+  readonly version?: string | undefined
+  readonly customTitle?: string | undefined
+  readonly aiTitle?: string | undefined
+  readonly tags?: readonly string[] | undefined
+  readonly costUsd?: number | undefined
+  readonly mode?: 'coordinator' | 'normal' | undefined
+  readonly entrypoint?: string | undefined
 }
 
 export interface SessionMetadataEntry {
   readonly type: string
   readonly sessionId: string
-  readonly timestamp?: string
+  readonly timestamp?: string | undefined
   readonly data: Record<string, unknown>
 }
 
@@ -97,17 +97,17 @@ export interface ContextCollapse {
 export interface SubagentMeta {
   readonly id: string
   readonly sessionId: string
-  readonly agentType?: string
-  readonly description?: string
-  readonly totalTokens?: number
-  readonly totalTools?: number
-  readonly durationMs?: number
-  readonly model?: string
+  readonly agentType?: string | undefined
+  readonly description?: string | undefined
+  readonly totalTokens?: number | undefined
+  readonly totalTools?: number | undefined
+  readonly durationMs?: number | undefined
+  readonly model?: string | undefined
 }
 
 export interface FileChange {
   readonly sessionId: string
-  readonly messageId?: string
+  readonly messageId?: string | undefined
   readonly filePath: string
   readonly operation: 'read' | 'write' | 'edit' | 'create'
   readonly timestamp: string

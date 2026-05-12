@@ -13,23 +13,23 @@ export type ContextAuditDetail = 'summary' | 'full'
 export type TemporalGrouping = 'day' | 'week' | 'month'
 
 export interface ContextAuditFilters {
-  readonly projectSlug?: string
-  readonly dateRange?: DateRange
-  readonly minTokens?: number
-  readonly maxTokens?: number
-  readonly minCost?: number
-  readonly maxCost?: number
-  readonly minCacheHitRatio?: number
-  readonly maxCacheHitRatio?: number
-  readonly modelFilter?: string
+  readonly projectSlug?: string | undefined
+  readonly dateRange?: DateRange | undefined
+  readonly minTokens?: number | undefined
+  readonly maxTokens?: number | undefined
+  readonly minCost?: number | undefined
+  readonly maxCost?: number | undefined
+  readonly minCacheHitRatio?: number | undefined
+  readonly maxCacheHitRatio?: number | undefined
+  readonly modelFilter?: string | undefined
 }
 
 export interface ContextAuditOptions {
   readonly metric: ContextAuditMetric
   readonly detail: ContextAuditDetail
-  readonly groupBy?: TemporalGrouping
-  readonly filters?: ContextAuditFilters
-  readonly limit?: number
+  readonly groupBy?: TemporalGrouping | undefined
+  readonly filters?: ContextAuditFilters | undefined
+  readonly limit?: number | undefined
 }
 
 // Result types per metric
@@ -46,7 +46,7 @@ export interface CostBreakdownSummary {
   readonly sessionCount: number
   readonly minCostSession: SessionRef | null
   readonly maxCostSession: SessionRef | null
-  readonly periods?: readonly CostPeriod[]
+  readonly periods?: readonly CostPeriod[] | undefined
 }
 
 export interface CostPeriod {
@@ -97,7 +97,7 @@ export interface ContextUtilizationSummary {
   readonly maxTotalTokens: number
   readonly avgPeakMessageTokens: number
   readonly sessionsWithCollapses: { readonly count: number; readonly percentage: number }
-  readonly periods?: readonly { readonly period: string; readonly avgTotalTokens: number; readonly sessionCount: number; readonly collapseRate: number }[]
+  readonly periods?: readonly { readonly period: string; readonly avgTotalTokens: number; readonly sessionCount: number; readonly collapseRate: number }[] | undefined
 }
 
 export interface ContextUtilizationFull {
@@ -117,7 +117,7 @@ export interface CacheAnalysisSummary {
   readonly totalCacheCreation: number
   readonly totalCacheRead: number
   readonly sessionCount: number
-  readonly periods?: readonly { readonly period: string; readonly overallHitRatio: number; readonly avgHitRatio: number; readonly totalCacheCreation: number; readonly totalCacheRead: number }[]
+  readonly periods?: readonly { readonly period: string; readonly overallHitRatio: number; readonly avgHitRatio: number; readonly totalCacheCreation: number; readonly totalCacheRead: number }[] | undefined
 }
 
 export interface CacheAnalysisFull {
@@ -136,7 +136,7 @@ export interface CollapseAnalysisSummary {
   readonly avgCollapsesPerSession: number
   readonly sessionsWithCollapses: { readonly count: number; readonly percentage: number }
   readonly maxCollapseSession: SessionRef & { readonly collapseCount: number } | null
-  readonly periods?: readonly { readonly period: string; readonly totalCollapses: number; readonly sessionCount: number; readonly avgPerSession: number }[]
+  readonly periods?: readonly { readonly period: string; readonly totalCollapses: number; readonly sessionCount: number; readonly avgPerSession: number }[] | undefined
 }
 
 export interface CollapseAnalysisFull {

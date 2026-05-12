@@ -8,7 +8,7 @@ export class ProjectResolver {
     return this.registry.resolveProject(path)
   }
 
-  async resolveProjectFilter(filter: { project?: string; path?: string }): Promise<string | undefined> {
+  async resolveProjectFilter(filter: { project?: string | undefined; path?: string | undefined }): Promise<string | undefined> {
     if (filter.project) return filter.project
     if (filter.path) {
       const project = await this.resolveProject(filter.path)

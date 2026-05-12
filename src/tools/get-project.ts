@@ -73,7 +73,7 @@ export function registerGetProject(server: McpServer): void {
         }
 
         // Get session list for the project
-        const sessions: Array<{ id: string; startedAt: string; model?: string }> = []
+        const sessions: Array<{ id: string; startedAt: string; model?: string | undefined }> = []
         for await (const s of registry.discoverSessions(slug)) {
           sessions.push({ id: s.id, startedAt: s.startedAt, model: s.model })
         }

@@ -16,18 +16,18 @@ import type Database from 'better-sqlite3'
 // ── Types ──────────────────────────────────────────────────────────────────────
 
 interface TurnFilters {
-  readonly toolNames?: readonly string[]
-  readonly isError?: boolean
-  readonly isCorrection?: boolean
-  readonly roles?: readonly MessageRole[]
-  readonly textPattern?: string
-  readonly timeRange?: { readonly after?: string; readonly before?: string }
-  readonly turnRange?: { readonly from?: number; readonly to?: number }
+  readonly toolNames?: readonly string[] | undefined
+  readonly isError?: boolean | undefined
+  readonly isCorrection?: boolean | undefined
+  readonly roles?: readonly MessageRole[] | undefined
+  readonly textPattern?: string | undefined
+  readonly timeRange?: { readonly after?: string | undefined; readonly before?: string | undefined } | undefined
+  readonly turnRange?: { readonly from?: number | undefined; readonly to?: number | undefined } | undefined
 }
 
 interface FilterResult {
   readonly matches: boolean
-  readonly matchContext?: string
+  readonly matchContext?: string | undefined
 }
 
 interface SessionRow {

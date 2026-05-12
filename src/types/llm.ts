@@ -6,8 +6,8 @@ export interface ChatMessage {
 export interface ChatCompletionRequest {
   readonly model: string
   readonly messages: readonly ChatMessage[]
-  readonly max_tokens?: number
-  readonly temperature?: number
+  readonly max_tokens?: number | undefined
+  readonly temperature?: number | undefined
 }
 
 export interface ChatCompletionResponse {

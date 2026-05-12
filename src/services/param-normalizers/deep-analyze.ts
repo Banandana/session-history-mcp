@@ -6,10 +6,10 @@ import type { ParamNormalizer } from '../../types/invocation-log'
  * focus = different audit.
  */
 export const normalizeDeepAnalyze: ParamNormalizer = (input) => {
-  const sessionId = typeof input.sessionId === 'string' ? input.sessionId : ''
+  const sessionId = typeof input['sessionId'] === 'string' ? input['sessionId'] : ''
   if (!sessionId) return null
-  const focus = typeof input.focus === 'string' && input.focus.length > 0
-    ? input.focus.trim()
+  const focus = typeof input['focus'] === 'string' && input['focus'].length > 0
+    ? input['focus'].trim()
     : null
   return {
     shape: {
