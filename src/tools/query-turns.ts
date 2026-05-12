@@ -1,16 +1,15 @@
 import { container } from '../container'
 import type { McpServer } from '@modelcontextprotocol/sdk/server/mcp.js'
 import { z } from 'zod'
-import { join } from 'node:path'
 import { TOKENS } from '../container/tokens'
 import type { FreshnessGuard } from '../services/freshness-guard'
 import type { ResponseFormatter } from '../services/response-formatter'
 import type { DatabaseConnection } from '../infrastructure/database'
 import type { TurnIndexer } from '../services/turn-indexer'
+import type { AdapterRegistry } from '../services/adapter-registry'
 import type { NormalizedMessage, ContentBlock, MessageRole } from '../types'
 import type { TurnReference } from '../types/conversation'
 import { extractToolParams } from '../services/tool-summary'
-import { ConversationParser } from '../adapters/claude-code/conversation-parser'
 import type Database from 'better-sqlite3'
 
 // ── Types ──────────────────────────────────────────────────────────────────────
@@ -194,7 +193,7 @@ export function messageMatchesFilters(
 async function querySingleSession(
   sessionId: string,
   db: Database.Database,
-  claudeDir: string,
+  registry: AdapterRegistry,
   filters: TurnFilters,
   limit: number,
   offset: number,
@@ -211,13 +210,9 @@ async function querySingleSession(
     return { results: [], total: 0 }
   }
 
-  const projectSlug = session.project_slug ?? 'unknown'
-  const sessionPath = join(claudeDir, 'projects', projectSlug, `${sessionId}.jsonl`)
-
-  const parser = new ConversationParser()
   const messages: NormalizedMessage[] = []
   try {
-    for await (const msg of parser.parseSession(sessionPath)) {
+    for await (const msg of registry.getMessages(sessionId)) {
       messages.push(msg)
     }
   } catch {
@@ -254,7 +249,7 @@ async function querySingleSession(
 async function ensureTurnEventsIndexed(
   projectId: string,
   db: Database.Database,
-  claudeDir: string,
+  registry: AdapterRegistry,
 ): Promise<void> {
   const unindexed = db.prepare(
     `SELECT id, project_slug FROM sessions
@@ -264,18 +259,16 @@ async function ensureTurnEventsIndexed(
   if (unindexed.length === 0) return
 
   const turnIndexer = container.get<TurnIndexer>(TOKENS.TurnIndexer)
-  const parser = new ConversationParser()
 
   for (const session of unindexed) {
     if (!validateSessionId(session.id)) continue
-    const projectSlug = session.project_slug ?? 'unknown'
-    const sessionPath = join(claudeDir, 'projects', projectSlug, `${session.id}.jsonl`)
 
     try {
       const messages: NormalizedMessage[] = []
-      for await (const msg of parser.parseSession(sessionPath)) {
+      for await (const msg of registry.getMessages(session.id)) {
         messages.push(msg)
       }
+      if (messages.length === 0) continue
       turnIndexer.indexSession(session.id, messages)
     } catch {
       // Skip sessions with missing/corrupt JSONL
@@ -399,7 +392,7 @@ export function registerQueryTurns(server: McpServer): void {
       const formatter = container.get<ResponseFormatter>(TOKENS.ResponseFormatter)
       const dbConn = container.get<DatabaseConnection>(TOKENS.Database)
       const db = dbConn.get()
-      const claudeDir = container.get<string>(TOKENS.ClaudeDataDir)
+      const registry = container.get<AdapterRegistry>(TOKENS.AdapterRegistry)
 
       // Validate constraints
       if (!params.sessionId && !params.projectId) {
@@ -446,13 +439,13 @@ export function registerQueryTurns(server: McpServer): void {
 
       if (params.sessionId) {
         const queryResult = await querySingleSession(
-          params.sessionId, db, claudeDir, filters, limit, offset,
+          params.sessionId, db, registry, filters, limit, offset,
         )
         results = queryResult.results
         total = queryResult.total
       } else {
         // Cross-session: ensure turn_events are indexed
-        await ensureTurnEventsIndexed(params.projectId!, db, claudeDir)
+        await ensureTurnEventsIndexed(params.projectId!, db, registry)
 
         const queryResult = queryCrossSession(
           params.projectId!, db, filters, limit, offset,

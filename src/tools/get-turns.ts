@@ -1,14 +1,13 @@
 import { container } from '../container'
 import type { McpServer } from '@modelcontextprotocol/sdk/server/mcp.js'
 import { z } from 'zod'
-import { join } from 'node:path'
 import { TOKENS } from '../container/tokens'
 import type { FreshnessGuard } from '../services/freshness-guard'
 import type { ResponseFormatter } from '../services/response-formatter'
 import type { DatabaseConnection } from '../infrastructure/database'
+import type { AdapterRegistry } from '../services/adapter-registry'
 import type { NormalizedMessage, ContentBlock } from '../types'
 import type { ExpandedTurn } from '../types/conversation'
-import { ConversationParser } from '../adapters/claude-code/conversation-parser'
 
 export type { ExpandedTurn }
 
@@ -183,7 +182,7 @@ export function registerGetTurns(server: McpServer): void {
       const formatter = container.get<ResponseFormatter>(TOKENS.ResponseFormatter)
       const dbConn = container.get<DatabaseConnection>(TOKENS.Database)
       const db = dbConn.get()
-      const claudeDir = container.get<string>(TOKENS.ClaudeDataDir)
+      const registry = container.get<AdapterRegistry>(TOKENS.AdapterRegistry)
 
       const freshness = await freshnessGuard.ensureFresh()
 
@@ -193,7 +192,7 @@ export function registerGetTurns(server: McpServer): void {
         }
       }
 
-      // Look up session to get project_slug
+      // Look up session to confirm it exists
       const session = db.prepare(
         `SELECT project_slug FROM sessions WHERE id = ?`
       ).get(params.sessionId) as SessionRow | undefined
@@ -204,11 +203,7 @@ export function registerGetTurns(server: McpServer): void {
         }
       }
 
-      const projectSlug = session.project_slug ?? 'unknown'
-      const sessionPath = join(claudeDir, 'projects', projectSlug, `${params.sessionId}.jsonl`)
-
-      // Parse JSONL and collect requested turns
-      const parser = new ConversationParser()
+      // Route through adapter registry — handles both claude and pi session layouts
       const includeToolResults = params.includeToolResults !== false
 
       const turnIdSet = hasTurnIds ? new Set(params.turnIds) : null
@@ -220,7 +215,7 @@ export function registerGetTurns(server: McpServer): void {
       let turnIndex = 0
 
       try {
-        for await (const msg of parser.parseSession(sessionPath)) {
+        for await (const msg of registry.getMessages(params.sessionId)) {
           const matchById = turnIdSet !== null && turnIdSet.has(msg.uuid)
           const matchByRange = hasTurnRange && turnIndex >= rangeFrom && turnIndex <= rangeTo
 

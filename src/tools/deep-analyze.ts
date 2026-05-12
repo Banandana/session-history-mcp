@@ -1,14 +1,13 @@
 import { container } from '../container'
 import type { McpServer } from '@modelcontextprotocol/sdk/server/mcp.js'
 import { z } from 'zod'
-import { join } from 'node:path'
 import { TOKENS } from '../container/tokens'
 import type { FreshnessGuard } from '../services/freshness-guard'
 import type { ResponseFormatter } from '../services/response-formatter'
 import type { DatabaseConnection } from '../infrastructure/database'
+import type { AdapterRegistry } from '../services/adapter-registry'
 import type { NormalizedMessage } from '../types'
 import type { OpenAiLlmClient } from '../services/llm-client'
-import { ConversationParser } from '../adapters/claude-code/conversation-parser'
 
 function validateSessionId(id: string): boolean {
   return /^[a-f0-9-]{32,40}$/i.test(id)
@@ -86,7 +85,7 @@ export function registerDeepAnalyze(server: McpServer): void {
       const dbConn = container.get<DatabaseConnection>(TOKENS.Database)
       const llmClient = container.get<OpenAiLlmClient>(TOKENS.LlmClient)
       const db = dbConn.get()
-      const claudeDir = container.get<string>(TOKENS.ClaudeDataDir)
+      const registry = container.get<AdapterRegistry>(TOKENS.AdapterRegistry)
 
       const freshness = await freshnessGuard.ensureFresh()
 
@@ -122,14 +121,10 @@ export function registerDeepAnalyze(server: McpServer): void {
         }
       }
 
-      // Load full session transcript
-      const projectSlug = (session['project_slug'] as string) ?? 'unknown'
-      const sessionPath = join(claudeDir, 'projects', projectSlug, `${params.sessionId}.jsonl`)
-
-      const parser = new ConversationParser()
+      // Load full session transcript via adapter registry (claude + pi)
       const messages: NormalizedMessage[] = []
       try {
-        for await (const msg of parser.parseSession(sessionPath)) {
+        for await (const msg of registry.getMessages(params.sessionId)) {
           messages.push(msg)
         }
       } catch (err) {

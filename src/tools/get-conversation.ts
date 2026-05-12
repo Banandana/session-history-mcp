@@ -1,14 +1,13 @@
 import { container } from '../container'
 import type { McpServer } from '@modelcontextprotocol/sdk/server/mcp.js'
 import { z } from 'zod'
-import { join } from 'node:path'
 import { TOKENS } from '../container/tokens'
 import type { FreshnessGuard } from '../services/freshness-guard'
 import type { ResponseFormatter } from '../services/response-formatter'
 import type { DatabaseConnection } from '../infrastructure/database'
 import type { PhaseClusterer, Phase } from '../services/phase-clusterer'
+import type { AdapterRegistry } from '../services/adapter-registry'
 import type { NormalizedMessage } from '../types'
-import { ConversationParser } from '../adapters/claude-code/conversation-parser'
 
 function validateSessionId(id: string): boolean {
   return /^[a-f0-9-]{32,40}$/i.test(id)
@@ -51,7 +50,7 @@ export function registerGetConversation(server: McpServer): void {
       const dbConn = container.get<DatabaseConnection>(TOKENS.Database)
       const phaseClusterer = container.get<PhaseClusterer>(TOKENS.PhaseClusterer)
       const db = dbConn.get()
-      const claudeDir = container.get<string>(TOKENS.ClaudeDataDir)
+      const registry = container.get<AdapterRegistry>(TOKENS.AdapterRegistry)
 
       const freshness = await freshnessGuard.ensureFresh()
 
@@ -75,14 +74,10 @@ export function registerGetConversation(server: McpServer): void {
         }
       }
 
-      // Construct JSONL path and parse messages
-      const projectSlug = session.project_slug ?? 'unknown'
-      const sessionPath = join(claudeDir, 'projects', projectSlug, `${params.sessionId}.jsonl`)
-
-      const parser = new ConversationParser()
+      // Route through adapter registry — handles both claude and pi session layouts
       const messages: NormalizedMessage[] = []
       try {
-        for await (const msg of parser.parseSession(sessionPath)) {
+        for await (const msg of registry.getMessages(params.sessionId)) {
           messages.push(msg)
         }
       } catch (err) {

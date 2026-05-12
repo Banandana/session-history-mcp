@@ -7,9 +7,8 @@ import type { AdapterRegistry } from '../services/adapter-registry'
 import type { ProjectResolver } from '../services/project-resolver'
 import type { ResponseFormatter } from '../services/response-formatter'
 import type { AuditHistoryService } from '../services/audit-history'
-import type { ProjectMeta, MemoryEntry } from '../types'
+import type { ProjectMeta, MemoryEntry, ProjectSettings } from '../types'
 import { ConfigReader } from '../adapters/claude-code/config-reader'
-import { MemoryReader } from '../adapters/claude-code/memory-reader'
 
 export function registerGetProject(server: McpServer): void {
   server.tool(
@@ -60,15 +59,21 @@ export function registerGetProject(server: McpServer): void {
       const recentAudits = auditHistory.recentForProject([slug, foundProject.path], 10)
 
       if (detail === 'full') {
-        const claudeDir = container.get<string>(TOKENS.ClaudeDataDir)
-        const configReader = new ConfigReader(claudeDir)
-        const memoryReader = new MemoryReader(claudeDir)
+        // CLAUDE.md and settings are claude-code-specific concepts; pi projects
+        // expose neither, so we only invoke ConfigReader for claude-sourced projects.
+        let claudeMd: string | undefined
+        let settings: ProjectSettings | undefined
+        if (foundProject.source === 'claude-code') {
+          const claudeDir = container.get<string>(TOKENS.ClaudeDataDir)
+          const configReader = new ConfigReader(claudeDir)
+          claudeMd = await configReader.readProjectClaudeMd(foundProject.path)
+          settings = await configReader.readSettings()
+        }
 
-        const claudeMd = await configReader.readProjectClaudeMd(foundProject.path)
-        const settings = await configReader.readSettings()
-
+        // Memory: route through registry so each adapter surfaces its own
+        // memory format (claude's `~/.claude/memory`, pi's `~/.pi/agent/memory`).
         const memoryEntries: MemoryEntry[] = []
-        for await (const entry of memoryReader.readMemory(slug)) {
+        for await (const entry of registry.getMemory(slug)) {
           memoryEntries.push(entry)
         }
 
