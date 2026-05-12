@@ -25,10 +25,12 @@ import { AuditHistoryService } from '../services/audit-history'
 import { homedir } from 'node:os'
 import { join } from 'node:path'
 
-// Local LLM defaults. Override via LOCAL_LLM_URL / LOCAL_LLM_MODEL env vars
-// so the same repo works on any host without code changes.
+// Local LLM URL — override with LOCAL_LLM_URL. The model name is discovered
+// at runtime from `/v1/models` (the OpenAI request body requires the field
+// but local single-model servers ignore the value), so there is no
+// LOCAL_LLM_MODEL constant; LOCAL_LLM_MODEL env is honored as a fallback
+// label only if discovery fails.
 const DEFAULT_LOCAL_LLM_URL = 'http://localhost:30000/v1'
-const DEFAULT_LOCAL_LLM_MODEL = 'QuantTrio/MiniMax-M2.5-AWQ'
 
 /**
  * Shared singleton DI container. Module-level so tools and CLIs can import and
@@ -44,11 +46,10 @@ export function registerInfrastructure(): void {
 
   const claudeDir = join(homedir(), '.claude')
   const localLlmUrl = process.env['LOCAL_LLM_URL'] ?? DEFAULT_LOCAL_LLM_URL
-  const localLlmModel = process.env['LOCAL_LLM_MODEL'] ?? DEFAULT_LOCAL_LLM_MODEL
+  const localLlmModelFallback = process.env['LOCAL_LLM_MODEL']
 
   container.bind<string>(TOKENS.ClaudeDataDir).toConstantValue(claudeDir)
   container.bind<string>(TOKENS.LocalLlmUrl).toConstantValue(localLlmUrl)
-  container.bind<string>(TOKENS.LocalLlmModel).toConstantValue(localLlmModel)
 
   // Database
   const dbConn = new DatabaseConnection(claudeDir)
@@ -81,9 +82,9 @@ export function registerInfrastructure(): void {
   // LLM clients — local only. LocalLlmClient is the legacy summarization
   // helper used by FreshnessGuard; OpenAiLlmClient is the general-purpose
   // backend bound under TOKENS.LlmClient for tools like deep_analyze.
-  const llmClient = new LocalLlmClient(localLlmUrl, localLlmModel)
+  const llmClient = new LocalLlmClient(localLlmUrl, localLlmModelFallback)
   container.bind<LocalLlmClient>(TOKENS.LocalLlmClient).toConstantValue(llmClient)
-  const openAiLlmClient = createLlmClient(localLlmUrl, localLlmModel)
+  const openAiLlmClient = createLlmClient(localLlmUrl, localLlmModelFallback)
   container.bind<OpenAiLlmClient>(TOKENS.LlmClient).toConstantValue(openAiLlmClient)
 
   // Services
@@ -119,7 +120,7 @@ export function registerInfrastructure(): void {
   if (embeddingModel) {
     const embeddingDim = Number(process.env['VLLM_EMBEDDING_DIM'] ?? '1024')
     const embeddingBaseUrl = process.env['VLLM_EMBEDDING_URL'] ?? localLlmUrl
-    const embeddingClient = new OpenAiLlmClient(localLlmUrl, localLlmModel, {
+    const embeddingClient = new OpenAiLlmClient(localLlmUrl, localLlmModelFallback, {
       embeddingModel,
       embeddingDim,
       embeddingBaseUrl,

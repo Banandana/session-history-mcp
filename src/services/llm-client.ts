@@ -26,31 +26,74 @@ interface EmbeddingsResponse {
   readonly data: readonly { readonly embedding: readonly number[] }[]
 }
 
+interface ModelsResponse {
+  readonly data: readonly { readonly id: string }[]
+}
+
 /**
  * OpenAI-compatible API client (local vLLM, ollama, etc.)
+ *
+ * The chat-completions `model` field is required by the OpenAI wire schema
+ * but most single-model local servers ignore the value. We discover the
+ * actual served model on first use via `/v1/models` and cache it, so the
+ * caller doesn't have to keep an env var in sync with the running backend.
  *
  * When an `embeddingModel` is supplied the client also implements
  * EmbeddingClient against the /v1/embeddings endpoint.
  */
 export class OpenAiLlmClient implements LlmClient, EmbeddingClient {
-  readonly label: string
   readonly embeddingModel: string
   readonly embeddingDim: number
   private readonly embeddingBaseUrl: string
+  private discoveredModel: string | null = null
+  private discoveryPromise: Promise<string> | null = null
 
   constructor(
     private readonly baseUrl: string,
-    private readonly model: string,
+    private readonly modelFallback: string = 'local',
     options?: {
       readonly embeddingModel?: string
       readonly embeddingDim?: number
       readonly embeddingBaseUrl?: string
     },
   ) {
-    this.label = `openai-compat:${model}`
     this.embeddingModel = options?.embeddingModel ?? ''
     this.embeddingDim = options?.embeddingDim ?? 1024
     this.embeddingBaseUrl = options?.embeddingBaseUrl ?? baseUrl
+  }
+
+  get label(): string {
+    return `openai-compat:${this.discoveredModel ?? this.modelFallback}`
+  }
+
+  /**
+   * Discover the served model name once, lazily. Falls back to `modelFallback`
+   * if `/v1/models` is unreachable or returns nothing — the chat-completions
+   * call may still succeed since most local servers ignore the model field.
+   */
+  private async resolveModel(): Promise<string> {
+    if (this.discoveredModel) return this.discoveredModel
+    if (this.discoveryPromise) return this.discoveryPromise
+
+    this.discoveryPromise = (async () => {
+      try {
+        const response = await fetch(`${this.baseUrl}/models`, {
+          signal: AbortSignal.timeout(5000),
+        })
+        if (!response.ok) return this.modelFallback
+        const body = await response.json() as ModelsResponse
+        const id = body.data[0]?.id
+        if (typeof id === 'string' && id.length > 0) {
+          this.discoveredModel = id
+          return id
+        }
+      } catch {
+        // discovery failed — fall through to the constructor fallback
+      }
+      return this.modelFallback
+    })()
+
+    return this.discoveryPromise
   }
 
   async embed(inputs: readonly string[]): Promise<readonly (readonly number[])[]> {
@@ -85,7 +128,7 @@ export class OpenAiLlmClient implements LlmClient, EmbeddingClient {
     ]
 
     const request: ChatCompletionRequest = {
-      model: this.model,
+      model: await this.resolveModel(),
       messages,
       max_tokens: maxTokens,
       temperature: 0.3,
@@ -114,7 +157,9 @@ export class OpenAiLlmClient implements LlmClient, EmbeddingClient {
 
 /**
  * Build an LLM client from environment. Local OpenAI-compatible only.
+ * The model field is discovered lazily from `/v1/models`; the second arg
+ * is just the fallback label when discovery fails.
  */
-export function createLlmClient(localUrl: string, localModel: string): OpenAiLlmClient {
-  return new OpenAiLlmClient(localUrl, localModel)
+export function createLlmClient(localUrl: string, modelFallback?: string): OpenAiLlmClient {
+  return new OpenAiLlmClient(localUrl, modelFallback)
 }

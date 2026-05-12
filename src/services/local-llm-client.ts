@@ -1,11 +1,39 @@
 import type { ChatCompletionRequest, ChatCompletionResponse, ChatMessage } from '../types'
 import { httpPost } from '../infrastructure/http-client'
 
+interface ModelsResponse {
+  readonly data: readonly { readonly id: string }[]
+}
+
 export class LocalLlmClient {
+  private discoveredModel: string | null = null
+  private discoveryPromise: Promise<string> | null = null
+
   constructor(
     private readonly baseUrl: string,
-    private readonly model: string,
+    private readonly modelFallback: string = 'local',
   ) {}
+
+  private async resolveModel(): Promise<string> {
+    if (this.discoveredModel) return this.discoveredModel
+    if (this.discoveryPromise) return this.discoveryPromise
+    this.discoveryPromise = (async () => {
+      try {
+        const response = await fetch(`${this.baseUrl}/models`, {
+          signal: AbortSignal.timeout(5000),
+        })
+        if (!response.ok) return this.modelFallback
+        const body = await response.json() as ModelsResponse
+        const id = body.data[0]?.id
+        if (typeof id === 'string' && id.length > 0) {
+          this.discoveredModel = id
+          return id
+        }
+      } catch { /* fall through */ }
+      return this.modelFallback
+    })()
+    return this.discoveryPromise
+  }
 
   async summarize(content: string, maxTokens: number = 500): Promise<string> {
     const messages: ChatMessage[] = [
@@ -17,7 +45,7 @@ export class LocalLlmClient {
     ]
 
     const request: ChatCompletionRequest = {
-      model: this.model,
+      model: await this.resolveModel(),
       messages,
       max_tokens: maxTokens,
       temperature: 0.3,
